@@ -1,0 +1,64 @@
+<h2 class="sr-only">Three mobile screens of a photo editor app: home, adjust sliders, and filters with crop.</h2>
+<style>
+.bg{background:var(--surface-1);border-radius:12px;padding:16px;display:flex;gap:12px;justify-content:center}
+.ph{width:200px;height:410px;background:var(--surface-2);border:0.5px solid var(--border-strong);border-radius:24px;display:flex;flex-direction:column;overflow:hidden;font-size:12px}
+.tb{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 8px;font-weight:500;font-size:13px}
+.tb i{font-size:16px;color:var(--text-secondary)}
+.pic{position:relative;overflow:hidden;background:#85B7EB;border-radius:8px}
+.sun{position:absolute;width:26px;height:26px;border-radius:50%;background:#FAC775;top:16%;right:18%}
+.h1{position:absolute;bottom:-30%;left:-20%;width:80%;height:70%;border-radius:50%;background:#1D9E75}
+.h2{position:absolute;bottom:-40%;right:-25%;width:90%;height:65%;border-radius:50%;background:#0F6E56}
+.nav{display:flex;justify-content:space-around;padding:8px 4px 12px;border-top:0.5px solid var(--border);margin-top:auto}
+.nav div{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--text-secondary)}
+.nav i{font-size:18px}
+.nav .on{color:var(--text-accent)}
+.sl{padding:4px 12px}
+.sl div{display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary)}
+.sl input{width:100%;margin:2px 0 4px}
+.btn{margin:0 12px;padding:9px;border-radius:8px;text-align:center;font-weight:500;border:0.5px solid var(--border-strong);display:flex;align-items:center;justify-content:center;gap:6px}
+.cap{font-size:12px;color:var(--text-secondary);text-align:center;margin-top:6px}
+.col{display:flex;flex-direction:column;align-items:center}
+</style>
+<div class="bg">
+<div class="col"><div class="ph">
+<div class="tb"><span>Photo editor</span><i class="ti ti-settings" aria-hidden="true"></i></div>
+<div style="padding:8px 0;display:flex;flex-direction:column;gap:8px">
+<div class="btn" style="background:var(--fill-primary);color:var(--on-primary);border:none"><i class="ti ti-photo" style="font-size:16px" aria-hidden="true"></i>Choose photo</div>
+<div class="btn"><i class="ti ti-camera" style="font-size:16px" aria-hidden="true"></i>Take photo</div>
+</div>
+<div style="padding:8px 12px 4px;font-size:11px;color:var(--text-secondary)">Recent edits</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px">
+<div class="pic" style="height:80px"><div class="sun"></div><div class="h1"></div><div class="h2"></div></div>
+<div class="pic" style="height:80px;background:#F0997B"><div class="sun" style="background:#FAEEDA"></div><div class="h1" style="background:#993C1D"></div><div class="h2" style="background:#712B13"></div></div>
+<div class="pic" style="height:80px;background:#AFA9EC"><div class="sun"></div><div class="h1" style="background:#534AB7"></div><div class="h2" style="background:#3C3489"></div></div>
+<div class="pic" style="height:80px;background:#D3D1C7"><div class="sun" style="background:#F1EFE8"></div><div class="h1" style="background:#5F5E5A"></div><div class="h2" style="background:#444441"></div></div>
+</div>
+<div class="nav"><div class="on"><i class="ti ti-home" aria-hidden="true"></i>Home</div><div><i class="ti ti-folder" aria-hidden="true"></i>Projects</div><div><i class="ti ti-user" aria-hidden="true"></i>Profile</div></div>
+</div><div class="cap">Home</div></div>
+
+<div class="col"><div class="ph">
+<div class="tb"><i class="ti ti-x" aria-hidden="true"></i><span style="display:flex;gap:12px"><i class="ti ti-arrow-back-up" aria-hidden="true"></i><i class="ti ti-arrow-forward-up" aria-hidden="true"></i></span><i class="ti ti-check" style="color:var(--text-accent)" aria-hidden="true"></i></div>
+<div class="pic" style="height:170px;margin:0 10px"><div class="sun"></div><div class="h1"></div><div class="h2"></div></div>
+<div style="padding-top:10px">
+<div class="sl"><div><span>Brightness</span><span>+20</span></div><input type="range" min="-100" max="100" value="20"></div>
+<div class="sl"><div><span>Contrast</span><span>+10</span></div><input type="range" min="-100" max="100" value="10"></div>
+<div class="sl"><div><span>Saturation</span><span>0</span></div><input type="range" min="-100" max="100" value="0"></div>
+</div>
+<div class="nav"><div class="on"><i class="ti ti-adjustments" aria-hidden="true"></i>Adjust</div><div><i class="ti ti-wand" aria-hidden="true"></i>Filters</div><div><i class="ti ti-crop" aria-hidden="true"></i>Crop</div><div><i class="ti ti-typography" aria-hidden="true"></i>Text</div></div>
+</div><div class="cap">Adjust</div></div>
+
+<div class="col"><div class="ph">
+<div class="tb"><i class="ti ti-x" aria-hidden="true"></i><span style="display:flex;gap:12px"><i class="ti ti-arrow-back-up" aria-hidden="true"></i><i class="ti ti-arrow-forward-up" aria-hidden="true"></i></span><i class="ti ti-check" style="color:var(--text-accent)" aria-hidden="true"></i></div>
+<div class="pic" style="height:170px;margin:0 10px"><div class="sun"></div><div class="h1"></div><div class="h2"></div>
+<div style="position:absolute;inset:14px 18px;border:1.5px solid #fff;border-radius:2px"></div></div>
+<div style="display:flex;gap:6px;padding:10px 10px 4px;font-size:11px"><span style="padding:3px 8px;border-radius:8px;background:var(--bg-accent);color:var(--text-accent)">Free</span><span style="padding:3px 8px;border-radius:8px;border:0.5px solid var(--border)">1:1</span><span style="padding:3px 8px;border-radius:8px;border:0.5px solid var(--border)">4:3</span><span style="padding:3px 8px;border-radius:8px;border:0.5px solid var(--border)">16:9</span></div>
+<div style="padding:8px 10px 0;font-size:11px;color:var(--text-secondary)">Filters</div>
+<div style="display:flex;gap:6px;padding:4px 10px">
+<div class="col" style="gap:2px"><div class="pic" style="width:40px;height:40px;border:1.5px solid var(--border-accent)"><div class="h1"></div></div><span style="font-size:11px">None</span></div>
+<div class="col" style="gap:2px"><div class="pic" style="width:40px;height:40px;background:#B4B2A9"><div class="h1" style="background:#5F5E5A"></div></div><span style="font-size:11px">B&amp;W</span></div>
+<div class="col" style="gap:2px"><div class="pic" style="width:40px;height:40px;background:#FAC775"><div class="h1" style="background:#854F0B"></div></div><span style="font-size:11px">Sepia</span></div>
+<div class="col" style="gap:2px"><div class="pic" style="width:40px;height:40px;background:#F5C4B3"><div class="h1" style="background:#D4537E"></div></div><span style="font-size:11px">Warm</span></div>
+</div>
+<div class="nav"><div><i class="ti ti-adjustments" aria-hidden="true"></i>Adjust</div><div class="on"><i class="ti ti-wand" aria-hidden="true"></i>Filters</div><div class="on"><i class="ti ti-crop" aria-hidden="true"></i>Crop</div><div><i class="ti ti-download" aria-hidden="true"></i>Save</div></div>
+</div><div class="cap">Filters and crop</div></div>
+</div>

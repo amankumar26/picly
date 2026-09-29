@@ -1,0 +1,124 @@
+<div class="mobile-viewport-container">
+  <div class="mobile-frame">
+    <!-- Top Bar with Close, Undo, Redo, Done (custom action applies crop then routes to save) -->
+    <app-editor-header [customDoneAction]="applyCropAndProceed"></app-editor-header>
+
+    <!-- Photo Preview Area with Interactive Crop Box -->
+    <main class="editor-content">
+      <div 
+        class="preview-stage" 
+        #previewStage
+        (pointermove)="onPointerMove($event)"
+        (pointerup)="onPointerUp($event)"
+        (pointercancel)="onPointerUp($event)"
+      >
+        <div class="image-wrapper" [style.filter]="filterCss">
+          <img 
+            #targetImg
+            [src]="state.imageUrl" 
+            alt="Crop preview" 
+            class="target-image"
+            [style.transform]="'rotate(' + state.rotation + 'deg) scaleX(' + (state.flipH ? -1 : 1) + ') scaleY(' + (state.flipV ? -1 : 1) + ')'" 
+            (load)="onImageLoaded()"
+          />
+        </div>
+
+        <!-- Interactive Crop Box with drag & resize handles -->
+        <div 
+          class="interactive-crop-box" 
+          [style.left.px]="cropBox.x"
+          [style.top.px]="cropBox.y"
+          [style.width.px]="cropBox.width"
+          [style.height.px]="cropBox.height"
+        >
+          <!-- Center Drag Zone -->
+          <div 
+            class="crop-drag-zone" 
+            (pointerdown)="onPointerDown($event, 'move')"
+            title="Drag to move crop area"
+          >
+            <!-- Rule of thirds grid lines -->
+            <div class="crop-grid-line h-1"></div>
+            <div class="crop-grid-line h-2"></div>
+            <div class="crop-grid-line v-1"></div>
+            <div class="crop-grid-line v-2"></div>
+          </div>
+
+          <!-- Corner Handles for Resizing -->
+          <div class="crop-handle top-left" (pointerdown)="onPointerDown($event, 'tl')"></div>
+          <div class="crop-handle top-right" (pointerdown)="onPointerDown($event, 'tr')"></div>
+          <div class="crop-handle bottom-left" (pointerdown)="onPointerDown($event, 'bl')"></div>
+          <div class="crop-handle bottom-right" (pointerdown)="onPointerDown($event, 'br')"></div>
+        </div>
+      </div>
+
+      <!-- Success Notification Toast -->
+      <div class="crop-success-toast" *ngIf="cropSuccessMessage">
+        <i class="ti ti-circle-check"></i>
+        <span>{{ cropSuccessMessage }}</span>
+      </div>
+
+      <!-- Crop & Transform Controls Panel -->
+      <section class="controls-panel">
+        <div class="section-meta">
+          <span class="panel-title">Aspect Ratio</span>
+          <button type="button" class="reset-link" (click)="resetCrop()">Reset</button>
+        </div>
+
+        <!-- Aspect Ratio Chips -->
+        <div class="aspect-chips">
+          <button 
+            *ngFor="let r of aspectRatios" 
+            type="button"
+            class="chip-btn"
+            [class.active]="state.aspectRatio === r.id"
+            (click)="selectAspectRatio(r.id)"
+          >
+            {{ r.label }}
+          </button>
+        </div>
+
+        <!-- Primary Action: Apply Crop -->
+        <div class="apply-action-row">
+          <button type="button" class="btn-apply-crop" (click)="applyCrop()">
+            <i class="ti ti-crop"></i>
+            <span>Apply Crop</span>
+          </button>
+        </div>
+
+        <!-- Transform Actions (Rotate, Flip H, Flip V) -->
+        <div class="transform-actions">
+          <button type="button" class="action-btn" (click)="rotate()" title="Rotate 90°">
+            <i class="ti ti-rotate-clockwise"></i>
+            <span>Rotate ({{ state.rotation }}°)</span>
+          </button>
+
+          <button 
+            type="button" 
+            class="action-btn" 
+            [class.active]="state.flipH"
+            (click)="flipHorizontal()" 
+            title="Flip Horizontal"
+          >
+            <i class="ti ti-flip-horizontal"></i>
+            <span>Flip H</span>
+          </button>
+
+          <button 
+            type="button" 
+            class="action-btn" 
+            [class.active]="state.flipV"
+            (click)="flipVertical()" 
+            title="Flip Vertical"
+          >
+            <i class="ti ti-flip-vertical"></i>
+            <span>Flip V</span>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation: Crop active -->
+    <app-editor-bottom-bar activeTab="crop"></app-editor-bottom-bar>
+  </div>
+</div>

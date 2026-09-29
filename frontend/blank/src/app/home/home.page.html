@@ -1,0 +1,244 @@
+<div class="mobile-viewport-container">
+  <div class="mobile-frame">
+    <!-- Hidden File & Camera Native Inputs -->
+    <input #fileInput type="file" accept="image/*" style="display: none;" (change)="onFileSelected($event)" />
+    <input #cameraInput type="file" accept="image/*" capture="environment" style="display: none;"
+      (change)="onFileSelected($event)" />
+
+    <!-- Status Toast Notification -->
+    <div class="toast-notification" *ngIf="toastMessage">
+      <i class="ti ti-circle-check"></i>
+      <span>{{ toastMessage }}</span>
+    </div>
+
+    <!-- 1. Top Header matching Snapseed screenshot -->
+    <header class="snapseed-header">
+      <div class="header-left">
+        <span class="snapseed-logo">picly</span>
+      </div>
+
+      <div class="header-right">
+        <!-- SELECT / CANCEL & MORE Pill Button -->
+        <div class="select-pill-group">
+          <!-- Select All / Deselect All Toggle in Select Mode -->
+          <button 
+            *ngIf="isSelectMode" 
+            type="button" 
+            class="pill-select-all-btn" 
+            (click)="toggleSelectAll()"
+            [class.all-checked]="isAllSelected"
+            title="Select all photos"
+          >
+            <i class="ti" [ngClass]="isAllSelected ? 'ti-checks' : 'ti-checkbox'"></i>
+            <span>{{ isAllSelected ? 'DESELECT ALL' : 'SELECT ALL' }}</span>
+          </button>
+
+          <button type="button" class="pill-select-btn" (click)="toggleSelectMode()" [class.active]="isSelectMode">
+            <i class="ti" [ngClass]="isSelectMode ? 'ti-x' : 'ti-checkbox'"></i>
+            <span>{{ isSelectMode ? 'CANCEL' : 'SELECT' }}</span>
+          </button>
+          <div class="pill-divider" *ngIf="!isSelectMode"></div>
+          <button *ngIf="!isSelectMode" type="button" class="pill-more-btn" (click)="toggleMoreMenu()" aria-label="More options">
+            <i class="ti ti-dots"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- More Menu Dropdown -->
+    <div class="dropdown-backdrop" *ngIf="showMoreMenu" (click)="showMoreMenu = false">
+      <div class="more-menu-panel" (click)="$event.stopPropagation()">
+        <button class="menu-item" (click)="onAddPhotoClick(); showMoreMenu = false">
+          <i class="ti ti-photo-plus"></i>
+          <span>Add new photo</span>
+        </button>
+        <button class="menu-item" (click)="onCameraClick(); showMoreMenu = false">
+          <i class="ti ti-camera"></i>
+          <span>Open camera</span>
+        </button>
+        <div class="menu-divider"></div>
+        <button class="menu-item" (click)="showMoreMenu = false">
+          <i class="ti ti-settings"></i>
+          <span>Settings</span>
+        </button>
+        <button class="menu-item" (click)="showMoreMenu = false">
+          <i class="ti ti-help"></i>
+          <span>Help & feedback</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 2. Sub-header Controls Bar (ALL ▾ and View Mode Toggles OR Select Stats) -->
+    <div class="controls-bar" [class.in-select-mode]="isSelectMode">
+      <ng-container *ngIf="!isSelectMode">
+        <!-- Album Filter Dropdown Trigger -->
+        <div class="album-filter-container">
+          <button type="button" class="album-filter-btn" (click)="toggleAlbumDropdown()">
+            <span class="album-label">{{ currentAlbum }}</span>
+            <i class="ti ti-chevron-down album-chevron" [class.rotated]="showAlbumDropdown"></i>
+          </button>
+
+          <!-- Dropdown Menu -->
+          <div class="album-dropdown-menu" *ngIf="showAlbumDropdown">
+            <button type="button" class="album-option" [class.active]="currentAlbum === 'ALL'"
+              (click)="selectAlbum('ALL')">
+              <i class="ti ti-photo"></i>
+              <span>ALL</span>
+            </button>
+            <button type="button" class="album-option" [class.active]="currentAlbum === 'CAMERA'"
+              (click)="selectAlbum('CAMERA')">
+              <i class="ti ti-camera"></i>
+              <span>CAMERA</span>
+            </button>
+            <button type="button" class="album-option" [class.active]="currentAlbum === 'DOWNLOADS'"
+              (click)="selectAlbum('DOWNLOADS')">
+              <i class="ti ti-download"></i>
+              <span>DOWNLOADS</span>
+            </button>
+            <button type="button" class="album-option" [class.active]="currentAlbum === 'RECENT'"
+              (click)="selectAlbum('RECENT')">
+              <i class="ti ti-clock"></i>
+              <span>RECENT</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Grid / List Icons -->
+        <div class="view-toggle-group">
+          <button type="button" class="view-icon-btn" [class.active]="viewMode === 'grid'" (click)="viewMode = 'grid'"
+            title="Grid view">
+            <i class="ti ti-layout-grid"></i>
+          </button>
+          <button type="button" class="view-icon-btn" [class.active]="viewMode === 'list'" (click)="viewMode = 'list'"
+            title="List view">
+            <i class="ti ti-menu-2"></i>
+          </button>
+        </div>
+      </ng-container>
+
+      <ng-container *ngIf="isSelectMode">
+        <div class="select-mode-subbar">
+          <span class="select-counter">
+            <i class="ti ti-list-check"></i>
+            <strong>{{ selectedPhotoIds.size }}</strong> of {{ filteredPhotos.length }} selected
+          </span>
+          <button type="button" class="btn-quick-select-all" (click)="toggleSelectAll()">
+            <i class="ti" [ngClass]="isAllSelected ? 'ti-checks' : 'ti-checkbox'"></i>
+            <span>{{ isAllSelected ? 'Deselect All' : 'Select All (' + filteredPhotos.length + ')' }}</span>
+          </button>
+        </div>
+      </ng-container>
+    </div>
+
+    <!-- 3. Photo Gallery Grid matching Screenshot -->
+    <main class="gallery-viewport">
+      <div class="gallery-grid" [ngClass]="viewMode">
+        <div *ngFor="let photo of filteredPhotos" class="gallery-item" [class.selected]="selectedPhoto?.id === photo.id"
+          [class.multi-selected]="selectedPhotoIds.has(photo.id)" (click)="onPhotoClick(photo)">
+          <div class="photo-card-wrapper">
+            <img [src]="photo.imageUrl" [alt]="photo.title" class="gallery-thumbnail" loading="lazy" />
+
+            <!-- Multi-select checkbox badge -->
+            <div class="selection-checkbox" *ngIf="isSelectMode">
+              <i class="ti ti-check" *ngIf="selectedPhotoIds.has(photo.id)"></i>
+            </div>
+
+            <!-- Single Selected Overlay Ring & Badge -->
+            <div class="active-selection-overlay" *ngIf="!isSelectMode && selectedPhoto?.id === photo.id">
+              <span class="edit-badge-indicator">
+                <i class="ti ti-pencil"></i>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty state fallback if filter has no images -->
+        <div class="empty-gallery-state" *ngIf="filteredPhotos.length === 0">
+          <i class="ti ti-photo-off"></i>
+          <p>No photos in this album</p>
+          <button class="empty-add-btn" (click)="onAddPhotoClick()">
+            <i class="ti ti-upload"></i>
+            <span>Upload a photo</span>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- 4. Floating & Bottom Action Bar Architecture -->
+    <footer class="snapseed-footer">
+
+      <!-- EDIT OPTION DRAWER (Appears dynamically when user uploads or selects an image) -->
+      <div class="edit-action-banner" *ngIf="selectedPhoto && !isSelectMode">
+        <div class="banner-left">
+          <img [src]="selectedPhoto.imageUrl" class="banner-thumb" alt="Selected thumbnail" />
+          <div class="banner-text">
+            <span class="banner-title">{{ selectedPhoto.title }}</span>
+            <span class="banner-status">Photo selected &bull; Ready to edit</span>
+          </div>
+        </div>
+        <div class="banner-actions">
+          <button type="button" class="btn-delete-single" (click)="deleteSinglePhoto(selectedPhoto)" title="Delete photo">
+            <i class="ti ti-trash"></i>
+          </button>
+          <button type="button" class="btn-cancel-selection" (click)="clearSelection()" title="Deselect">
+            <i class="ti ti-x"></i>
+          </button>
+          <button type="button" class="btn-primary-edit" (click)="openEditorWithSelected()">
+            <i class="ti ti-adjustments-horizontal"></i>
+            <span>EDIT</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Floating Camera Pill Button matching screenshot exactly -->
+      <div class="camera-pill-container" *ngIf="!selectedPhoto && !isSelectMode">
+        <button type="button" class="camera-pill-btn" (click)="onCameraClick()">
+          <span class="camera-lens-ring">
+            <i class="ti ti-aperture"></i>
+          </span>
+          <span class="camera-label">camera</span>
+        </button>
+      </div>
+
+      <!-- Full-Width Bottom Buttons -->
+      <div class="bottom-button-container">
+        <!-- If in multi-select mode: show both DELETE and EDIT actions side by side -->
+        <div class="select-mode-actions-row" *ngIf="isSelectMode">
+          <button 
+            type="button" 
+            class="snapseed-delete-btn"
+            [disabled]="selectedPhotoIds.size === 0" 
+            (click)="deleteSelectedPhotos()"
+          >
+            <i class="ti ti-trash"></i>
+            <span>DELETE ({{ selectedPhotoIds.size }})</span>
+          </button>
+
+          <button 
+            type="button" 
+            class="snapseed-green-btn edit-selected-btn"
+            [disabled]="selectedPhotoIds.size === 0" 
+            (click)="openEditorWithSelected()"
+          >
+            <i class="ti ti-pencil"></i>
+            <span>EDIT ({{ selectedPhotoIds.size }})</span>
+          </button>
+        </div>
+
+        <!-- If an image was just uploaded / selected -->
+        <button *ngIf="!isSelectMode && selectedPhoto" type="button" class="snapseed-green-btn"
+          (click)="openEditorWithSelected()">
+          <i class="ti ti-adjustments-horizontal"></i>
+          <span>EDIT PHOTO</span>
+        </button>
+
+        <!-- Default Add Photo button -->
+        <button *ngIf="!isSelectMode && !selectedPhoto" type="button" class="snapseed-green-btn"
+          (click)="onAddPhotoClick()">
+          <i class="ti ti-plus"></i>
+          <span>ADD PHOTO</span>
+        </button>
+      </div>
+    </footer>
+  </div>
+</div>

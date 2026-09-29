@@ -1,0 +1,1248 @@
+<div class="mobile-viewport-container">
+  <div class="mobile-frame">
+    <!-- Hidden Inputs -->
+    <input 
+      #overlayFileInput 
+      type="file" 
+      accept="image/*" 
+      style="display: none;" 
+      (change)="onOverlayFileSelected($event)" 
+    />
+    <input 
+      #addLayerFileInput 
+      type="file" 
+      accept="image/*" 
+      style="display: none;" 
+      (change)="onAddLayerFileSelected($event)" 
+    />
+
+    <!-- 1. Top Bar matching Snapseed screenshot -->
+    <header class="top-nav-bar" *ngIf="activeToolMode === 'none'">
+      <button class="nav-icon-btn" (click)="goBackHome()" title="Back to Home" aria-label="Back">
+        <i class="ti ti-arrow-left"></i>
+      </button>
+
+      <div class="top-right-group">
+        <button 
+          class="nav-icon-btn" 
+          [class.disabled]="!(canUndo$ | async)" 
+          [disabled]="!(canUndo$ | async)"
+          (click)="onUndo()" 
+          title="Undo"
+          aria-label="Undo"
+        >
+          <i class="ti ti-arrow-back-up"></i>
+        </button>
+
+        <button 
+          class="nav-icon-btn layers-btn-nav" 
+          [class.active]="showLayersPanel"
+          (click)="toggleLayersPanel()" 
+          title="Layers Panel" 
+          aria-label="Layers"
+        >
+          <i class="ti ti-stack-2"></i>
+          <span class="layers-count-badge" *ngIf="layers.length > 1">{{ layers.length }}</span>
+        </button>
+
+        <button 
+          class="nav-icon-btn" 
+          [class.disabled]="!(canRedo$ | async)" 
+          [disabled]="!(canRedo$ | async)"
+          (click)="onRedo()" 
+          title="Redo"
+          aria-label="Redo"
+        >
+          <i class="ti ti-arrow-forward-up"></i>
+        </button>
+
+        <!-- Compare Button: Hold or click to view original -->
+        <button 
+          class="nav-icon-btn compare-btn" 
+          (mousedown)="startCompare()"
+          (mouseup)="endCompare()"
+          (touchstart)="startCompare()"
+          (touchend)="endCompare()"
+          title="Hold to Compare Original" 
+          aria-label="Compare"
+        >
+          <i class="ti ti-square-half"></i>
+        </button>
+
+        <button class="nav-icon-btn" (click)="toggleMoreMenu()" title="More" aria-label="More">
+          <i class="ti ti-dots-vertical"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Compare Badge Indicator -->
+    <div class="compare-indicator" *ngIf="isComparing">
+      <span>ORIGINAL</span>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="action-toast" *ngIf="toastMessage">
+      <i class="ti ti-circle-check"></i>
+      <span>{{ toastMessage }}</span>
+    </div>
+
+    <!-- 2. Main Viewport Canvas Stage -->
+    <main class="canvas-viewport" (click)="onImageTap($event)">
+      <div 
+        class="preview-stage" 
+        #previewStage
+        (pointermove)="onPointerMove($event)"
+        (pointerup)="onPointerUp($event)"
+        (pointercancel)="onPointerUp($event)"
+      >
+        <!-- LAYER 0: BASE PHOTO -->
+        <div 
+          class="image-wrapper" 
+          [style.z-index]="10"
+          [style.display]="baseLayer?.visible ? 'flex' : 'none'"
+          [style.opacity]="(baseLayer?.opacity ?? 100) / 100"
+          [style.mix-blend-mode]="baseLayer?.blendMode ?? 'normal'"
+          [style.filter]="isComparing ? 'none' : (filterCss + ' ' + hdrCssFilter + ' ' + wbCssFilter + ' ' + colorGradeCssFilter)"
+        >
+          <img 
+            #targetImg
+            [src]="isComparing ? (state.originalImageUrl || state.imageUrl) : (baseLayer?.imageUrl || state.imageUrl)" 
+            alt="Preview" 
+            class="target-image"
+            [style.transform]="activeToolMode === 'perspective' ? perspectiveCssTransform : (isComparing ? 'none' : ('rotate(' + state.rotation + 'deg) scaleX(' + (state.flipH ? -1 : 1) + ') scaleY(' + (state.flipV ? -1 : 1) + ')'))" 
+            (load)="onImageLoaded()"
+          />
+        </div>
+
+        <!-- UPPER LAYERS (Overlays, Added Photos, PNGs) -->
+        <ng-container *ngFor="let layer of nonBaseLayers; trackBy: trackByLayerId">
+          <div 
+            *ngIf="layer.visible"
+            class="interactive-canvas-layer"
+            [class.is-selected]="layer.id === selectedLayerId"
+            [class.is-overlay-active]="activeToolMode === 'overlay' && layer.id === selectedLayerId"
+            [style.z-index]="15 + getLayerZIndex(layer.id)"
+            [style.left.%]="layer.x"
+            [style.top.%]="layer.y"
+            [style.transform]="'translate(-50%, -50%) rotate(' + (layer.rotation || 0) + 'deg) scale(' + ((layer.flipH ? -1 : 1) * (layer.scale || 1)) + ', ' + ((layer.flipV ? -1 : 1) * (layer.scale || 1)) + ')'"
+            [style.opacity]="layer.opacity / 100"
+            [style.mix-blend-mode]="layer.blendMode"
+            (pointerdown)="onCanvasLayerPointerDown($event, layer)"
+          >
+            <img [src]="layer.imageUrl" [alt]="layer.name" class="canvas-layer-img" draggable="false" />
+
+            <!-- Active Layer Handles & Ring -->
+            <ng-container *ngIf="layer.id === selectedLayerId && (activeToolMode === 'overlay' || showLayersPanel)">
+              <!-- Selection Frame Outline -->
+              <div class="overlay-selection-frame"></div>
+
+              <!-- 4 Corner Interactive Resize Handles (Direct Canvas Resizing) -->
+              <div 
+                class="overlay-resize-handle top-left" 
+                (pointerdown)="onResizeHandlePointerDown($event, layer, 'tl')"
+                title="Drag to resize directly"
+              ></div>
+              <div 
+                class="overlay-resize-handle top-right" 
+                (pointerdown)="onResizeHandlePointerDown($event, layer, 'tr')"
+                title="Drag to resize directly"
+              ></div>
+              <div 
+                class="overlay-resize-handle bottom-left" 
+                (pointerdown)="onResizeHandlePointerDown($event, layer, 'bl')"
+                title="Drag to resize directly"
+              ></div>
+              <div 
+                class="overlay-resize-handle bottom-right" 
+                (pointerdown)="onResizeHandlePointerDown($event, layer, 'br')"
+                title="Drag to resize directly"
+              ></div>
+
+              <!-- Top Rotation Handle -->
+              <div class="overlay-rotate-stem"></div>
+              <div 
+                class="overlay-rotate-knob" 
+                (pointerdown)="onRotateHandlePointerDown($event, layer)"
+                title="Drag to rotate directly"
+              >
+                <i class="ti ti-rotate"></i>
+              </div>
+
+              <!-- Center Move Ring -->
+              <div class="overlay-touch-ring">
+                <i class="ti ti-arrows-move"></i>
+              </div>
+
+              <!-- Corner Visual Brackets -->
+              <div class="overlay-corner-bracket top-left"></div>
+              <div class="overlay-corner-bracket top-right"></div>
+              <div class="overlay-corner-bracket bottom-left"></div>
+              <div class="overlay-corner-bracket bottom-right"></div>
+            </ng-container>
+          </div>
+        </ng-container>
+
+        <!-- Interactive Crop Box Overlay -->
+        <div 
+          *ngIf="activeToolMode === 'crop'"
+          class="interactive-crop-box" 
+          [style.left.px]="cropBox.x"
+          [style.top.px]="cropBox.y"
+          [style.width.px]="cropBox.width"
+          [style.height.px]="cropBox.height"
+        >
+          <div class="crop-drag-zone" (pointerdown)="onPointerDown($event, 'move')">
+            <div class="crop-grid-line h-1"></div>
+            <div class="crop-grid-line h-2"></div>
+            <div class="crop-grid-line v-1"></div>
+            <div class="crop-grid-line v-2"></div>
+          </div>
+          <div class="crop-handle top-left" (pointerdown)="onPointerDown($event, 'tl')"></div>
+          <div class="crop-handle top-right" (pointerdown)="onPointerDown($event, 'tr')"></div>
+          <div class="crop-handle bottom-left" (pointerdown)="onPointerDown($event, 'bl')"></div>
+          <div class="crop-handle bottom-right" (pointerdown)="onPointerDown($event, 'br')"></div>
+        </div>
+
+        <!-- Interactive Selective Pin -->
+        <div 
+          *ngIf="activeToolMode === 'selective'" 
+          class="selective-focal-pin"
+          [style.left.%]="selectivePoint.x"
+          [style.top.%]="selectivePoint.y"
+        >
+          <div class="pin-ring" [style.width.px]="selectiveRadius * 1.8" [style.height.px]="selectiveRadius * 1.8"></div>
+          <div class="pin-dot"></div>
+          <span class="pin-label">S</span>
+        </div>
+
+        <!-- Interactive Painting Canvas (Brush Mode) -->
+        <canvas 
+          #brushCanvas
+          *ngIf="activeToolMode === 'brush'"
+          class="interactive-brush-layer"
+          (pointerdown)="onBrushPointerDown($event)"
+          (pointermove)="onBrushPointerMove($event)"
+          (pointerup)="onBrushPointerUp()"
+          (pointercancel)="onBrushPointerUp()"
+        ></canvas>
+      </div>
+    </main>
+
+    <!-- ============================================================== -->
+    <!-- 3. INTERACTIVE SUB-TOOL ACTION DOCKS                           -->
+    <!-- ============================================================== -->
+
+    <!-- SUB-TOOL: TUNE IMAGE -->
+    <div class="tool-sub-container" *ngIf="activeToolMode === 'tune'">
+      <div class="tune-status-bar">
+        <span class="tune-param-name">{{ currentTuneParamMeta.label }}</span>
+        <span class="tune-param-val">{{ formatValue(currentTuneParamValue) }}</span>
+      </div>
+      <div class="tune-slider-box">
+        <input 
+          type="range" 
+          [min]="currentTuneParamMeta.min" 
+          [max]="currentTuneParamMeta.max" 
+          [value]="currentTuneParamValue"
+          (input)="onTuneSliderInput($event)"
+          class="tune-range-slider"
+        />
+      </div>
+      <div class="tune-params-scroll">
+        <button 
+          *ngFor="let p of tuneParams" 
+          type="button"
+          class="tune-param-chip"
+          [class.active]="activeTuneParam === p.id"
+          (click)="selectTuneParam(p.id)"
+        >
+          <i class="ti" [ngClass]="p.icon"></i>
+          <span>{{ p.label }}</span>
+        </button>
+      </div>
+      <div class="sub-tool-action-bar">
+        <button class="tool-bar-btn cancel" (click)="cancelTune()"><i class="ti ti-x"></i></button>
+        <span class="sub-bar-title">Tune Image</span>
+        <button class="tool-bar-btn apply" (click)="applyTune()"><i class="ti ti-check"></i></button>
+      </div>
+    </div>
+
+    <!-- SUB-TOOL: CROP -->
+    <div class="tool-sub-container" *ngIf="activeToolMode === 'crop'">
+      <div class="crop-controls-row">
+        <div class="aspect-chips-scroll">
+          <button 
+            *ngFor="let r of aspectRatios" 
+            type="button" 
+            class="crop-chip"
+            [class.active]="state.aspectRatio === r.id"
+            (click)="selectAspectRatio(r.id)"
+          >
+            <i class="ti" [ngClass]="r.icon"></i>
+            <span>{{ r.label }}</span>
+          </button>
+        </div>
+        <div class="crop-transforms-row">
+          <button class="mini-btn" (click)="rotate()" title="Rotate 90°"><i class="ti ti-rotate-clockwise"></i></button>
+          <button class="mini-btn" (click)="flipHorizontal()" title="Flip Horizontal"><i class="ti ti-flip-horizontal"></i></button>
+          <button class="mini-btn" (click)="flipVertical()" title="Flip Vertical"><i class="ti ti-flip-vertical"></i></button>
+        </div>
+      </div>
+      <div class="sub-tool-action-bar">
+        <button class="tool-bar-btn cancel" (click)="cancelCrop()"><i class="ti ti-x"></i></button>
+        <span class="sub-bar-title">Crop</span>
+        <button class="tool-bar-btn apply" (click)="applyCrop()"><i class="ti ti-check"></i></button>
+      </div>
+    </div>
+
+    <!-- SUB-TOOL: PERSPECTIVE (3D Transform) -->
+    <div class="tool-sub-container" *ngIf="activeToolMode === 'perspective'">
+      <div class="tune-status-bar">
+        <span class="tune-param-name">
+          {{ perspectiveParam === 'tiltX' ? 'Tilt Vertical' : (perspectiveParam === 'tiltY' ? 'Tilt Horizontal' : (perspectiveParam === 'rotate' ? 'Rotate' : 'Zoom Scale')) }}
+        </span>
+        <span class="tune-param-val">
+          {{ perspectiveParam === 'tiltX' ? formatValue(perspectiveTiltX) + '°' : (perspectiveParam === 'tiltY' ? formatValue(perspectiveTiltY) + '°' : (perspectiveParam === 'rotate' ? formatValue(perspectiveRotate) + '°' : perspectiveScale.toFixed(2) + 'x')) }}
+        </span>
+      </div>
+      <div class="tune-slider-box">
+        <input 
+          *ngIf="perspectiveParam === 'tiltX'"
+          type="range" min="-35" max="35" [(ngModel)]="perspectiveTiltX" class="tune-range-slider" 
+        />
+        <input 
+          *ngIf="perspectiveParam === 'tiltY'"
+          type="range" min="-35" max="35" [(ngModel)]="perspectiveTiltY" class="tune-range-slider" 
+        />
+        <input 
+          *ngIf="perspectiveParam === 'rotate'"
+          type="range" min="-30" max="30" [(ngModel)]="perspectiveRotate" class="tune-range-slider" 
+        />
+        <input 
+          *ngIf="perspectiveParam === 'scale'"
+          type="range" min="1.0" max="1.8" step="0.02" [(ngModel)]="perspectiveScale" class="tune-range-slider" 
+        />
+      </div>
+      <div class="tune-params-scroll">
+        <button type="button" class="tune-param-chip" [class.active]="perspectiveParam === 'tiltX'" (click)="perspectiveParam = 'tiltX'">
+          <i class="ti ti-arrows-vertical"></i><span>Tilt Vertical</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="perspectiveParam === 'tiltY'" (click)="perspectiveParam = 'tiltY'">
+          <i class="ti ti-arrows-horizontal"></i><span>Tilt Horizontal</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="perspectiveParam === 'rotate'" (click)="perspectiveParam = 'rotate'">
+          <i class="ti ti-rotate-2"></i><span>Rotate</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="perspectiveParam === 'scale'" (click)="perspectiveParam = 'scale'">
+          <i class="ti ti-zoom-in"></i><span>Scale</span>
+        </button>
+      </div>
+      <div class="sub-tool-action-bar">
+        <button class="tool-bar-btn cancel" (click)="cancelPerspective()"><i class="ti ti-x"></i></button>
+        <span class="sub-bar-title">Perspective</span>
+        <button class="tool-bar-btn apply" (click)="applyPerspective()"><i class="ti ti-check"></i></button>
+      </div>
+    </div>
+
+    <!-- SUB-TOOL: EXPAND (Canvas Expansion & Smart Fill) -->
+    <div class="tool-sub-container" *ngIf="activeToolMode === 'expand'">
+      <div class="tune-status-bar">
+        <span class="tune-param-name">Expand Padding</span>
+        <span class="tune-param-val">+{{ expandAmount }}%</span>
+      </div>
+      <div class="tune-slider-box">
+        <input type="range" min="5" max="50" [(ngModel)]="expandAmount" class="tune-range-slider" />
+      </div>
+      <div class="tune-params-scroll">
+        <button type="button" class="tune-param-chip" [class.active]="expandFillMode === 'smart'" (click)="expandFillMode = 'smart'">
+          <i class="ti ti-sparkles"></i><span>Smart Mirrored</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="expandFillMode === 'white'" (click)="expandFillMode = 'white'">
+          <i class="ti ti-square"></i><span>White Border</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="expandFillMode === 'black'" (click)="expandFillMode = 'black'">
+          <i class="ti ti-square-filled"></i><span>Black Border</span>
+        </button>
+      </div>
+      <div class="sub-tool-action-bar">
+        <button class="tool-bar-btn cancel" (click)="cancelExpand()"><i class="ti ti-x"></i></button>
+        <span class="sub-bar-title">Expand</span>
+        <button class="tool-bar-btn apply" (click)="applyExpand()"><i class="ti ti-check"></i></button>
+      </div>
+    </div>
+
+    <!-- SUB-TOOL: HDR - HSL SCAPE -->
+    <div class="tool-sub-container" *ngIf="activeToolMode === 'hdr'">
+      <div class="tune-status-bar">
+        <span class="tune-param-name">{{ hslChannel === 'all' ? 'HDR Strength' : (hslChannel + ' Saturation') }}</span>
+        <span class="tune-param-val">{{ hslChannel === 'all' ? hdrStrength : formatValue(hslSaturation) }}</span>
+      </div>
+      <div class="tune-slider-box">
+        <input *ngIf="hslChannel === 'all'" type="range" min="0" max="100" [(ngModel)]="hdrStrength" class="tune-range-slider" />
+        <input *ngIf="hslChannel !== 'all'" type="range" min="-100" max="100" [(ngModel)]="hslSaturation" class="tune-range-slider" />
+      </div>
+      <div class="tune-params-scroll">
+        <button type="button" class="tune-param-chip" [class.active]="hslChannel === 'all'" (click)="hslChannel = 'all'">
+          <i class="ti ti-mountain"></i><span>HDR Scape</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="hslChannel === 'red'" (click)="hslChannel = 'red'">
+          <i class="ti ti-circle-filled" style="color: #ef4444;"></i><span>Red HSL</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="hslChannel === 'green'" (click)="hslChannel = 'green'">
+          <i class="ti ti-circle-filled" style="color: #22c55e;"></i><span>Green HSL</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="hslChannel === 'blue'" (click)="hslChannel = 'blue'">
+          <i class="ti ti-circle-filled" style="color: #3b82f6;"></i><span>Blue HSL</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="hslChannel === 'yellow'" (click)="hslChannel = 'yellow'">
+          <i class="ti ti-circle-filled" style="color: #eab308;"></i><span>Yellow HSL</span>
+        </button>
+      </div>
+      <div class="sub-tool-action-bar">
+        <button class="tool-bar-btn cancel" (click)="cancelHdr()"><i class="ti ti-x"></i></button>
+        <span class="sub-bar-title">HDR - HSL Scape</span>
+        <button class="tool-bar-btn apply" (click)="applyHdr()"><i class="ti ti-check"></i></button>
+      </div>
+    </div>
+
+    <!-- SUB-TOOL: CURVES & DETAILS -->
+    <div class="tool-sub-container" *ngIf="activeToolMode === 'curves'">
+      <div class="curves-top-switcher">
+        <button class="switch-chip" [class.active]="curvesSubTab === 'curves'" (click)="curvesSubTab = 'curves'">
+          <i class="ti ti-spline"></i><span>Curves</span>
+        </button>
+        <button class="switch-chip" [class.active]="curvesSubTab === 'details'" (click)="curvesSubTab = 'details'">
+          <i class="ti ti-triangle"></i><span>Details</span>
+        </button>
+      </div>
+
+      <!-- Curves Sub-view -->
+      <div *ngIf="curvesSubTab === 'curves'">
+        <div class="curves-visual-row">
+          <svg class="curve-graph-svg" viewBox="0 0 200 80">
+            <line x1="0" y1="80" x2="200" y2="0" stroke="rgba(255,255,255,0.2)" stroke-dasharray="3,3" />
+            <path 
+              [attr.d]="'M 0 ' + (80 - curvePoints.blacks) + ' Q 50 ' + (60 - curvePoints.shadows) + ', 100 ' + (40 - curvePoints.midtones) + ' T 200 ' + (0 - curvePoints.whites)" 
+              fill="none" 
+              stroke="#ffffff" 
+              stroke-width="2.5" 
+            />
+          </svg>
+        </div>
+        <div class="tune-params-scroll">
+          <button type="button" class="tune-param-chip" (click)="setCurvePreset('linear')">
+            <i class="ti ti-line"></i><span>Linear</span>
+          </button>
+          <button type="button" class="tune-param-chip" (click)="setCurvePreset('contrast')">
+            <i class="ti ti-contrast"></i><span>Contrast</span>
+          </button>
+          <button type="button" class="tune-param-chip" (click)="setCurvePreset('bright')">
+            <i class="ti ti-sun"></i><span>Brighten</span>
+          </button>
+          <button type="button" class="tune-param-chip" (click)="setCurvePreset('fade')">
+            <i class="ti ti-mist"></i><span>Fade</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Details Sub-view -->
+      <div *ngIf="curvesSubTab === 'details'">
+        <div class="tune-status-bar">
+          <span class="tune-param-name">Structure</span>
+          <span class="tune-param-val">{{ formatValue(detailStructure) }}</span>
+        </div>
+        <div class="tune-slider-box">
+          <input type="range" min="-100" max="100" [(ngModel)]="detailStructure" class="tune-range-slider" />
+        </div>
+      </div>
+
+      <div class="sub-tool-action-bar">
+        <button class="tool-bar-btn cancel" (click)="cancelCurves()"><i class="ti ti-x"></i></button>
+        <span class="sub-bar-title">Curves & Details</span>
+        <button class="tool-bar-btn apply" (click)="applyCurves()"><i class="ti ti-check"></i></button>
+      </div>
+    </div>
+
+    <!-- SUB-TOOL: SELECTIVE -->
+    <div class="tool-sub-container" *ngIf="activeToolMode === 'selective'">
+      <div class="selective-hint">
+        <span>Tap on image to move pin &bull; Adjust localized parameters</span>
+      </div>
+      <div class="tune-status-bar">
+        <span class="tune-param-name">
+          {{ selectiveParam === 'brightness' ? 'Brightness' : (selectiveParam === 'contrast' ? 'Contrast' : (selectiveParam === 'saturation' ? 'Saturation' : 'Radius')) }}
+        </span>
+        <span class="tune-param-val">
+          {{ selectiveParam === 'brightness' ? formatValue(selectiveBrightness) : (selectiveParam === 'contrast' ? formatValue(selectiveContrast) : (selectiveParam === 'saturation' ? formatValue(selectiveSaturation) : selectiveRadius + 'px')) }}
+        </span>
+      </div>
+      <div class="tune-slider-box">
+        <input *ngIf="selectiveParam === 'brightness'" type="range" min="-100" max="100" [(ngModel)]="selectiveBrightness" class="tune-range-slider" />
+        <input *ngIf="selectiveParam === 'contrast'" type="range" min="-100" max="100" [(ngModel)]="selectiveContrast" class="tune-range-slider" />
+        <input *ngIf="selectiveParam === 'saturation'" type="range" min="-100" max="100" [(ngModel)]="selectiveSaturation" class="tune-range-slider" />
+        <input *ngIf="selectiveParam === 'structure'" type="range" min="15" max="80" [(ngModel)]="selectiveRadius" class="tune-range-slider" />
+      </div>
+      <div class="tune-params-scroll">
+        <button type="button" class="tune-param-chip" [class.active]="selectiveParam === 'brightness'" (click)="selectiveParam = 'brightness'">
+          <i class="ti ti-sun"></i><span>Brightness</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="selectiveParam === 'contrast'" (click)="selectiveParam = 'contrast'">
+          <i class="ti ti-contrast"></i><span>Contrast</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="selectiveParam === 'saturation'" (click)="selectiveParam = 'saturation'">
+          <i class="ti ti-droplet"></i><span>Saturation</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="selectiveParam === 'structure'" (click)="selectiveParam = 'structure'">
+          <i class="ti ti-circle-dot"></i><span>Radius</span>
+        </button>
+      </div>
+      <div class="sub-tool-action-bar">
+        <button class="tool-bar-btn cancel" (click)="cancelSelective()"><i class="ti ti-x"></i></button>
+        <span class="sub-bar-title">Selective</span>
+        <button class="tool-bar-btn apply" (click)="applySelective()"><i class="ti ti-check"></i></button>
+      </div>
+    </div>
+
+    <!-- SUB-TOOL: BRUSH (Paint directly on Image) -->
+    <div class="tool-sub-container" *ngIf="activeToolMode === 'brush'">
+      <div class="selective-hint">
+        <span>Draw on the photo with your finger to apply effect</span>
+      </div>
+      <div class="tune-status-bar">
+        <span class="tune-param-name">Brush Intensity</span>
+        <span class="tune-param-val">{{ formatValue(brushIntensity) }}</span>
+      </div>
+      <div class="tune-slider-box">
+        <input type="range" min="-100" max="100" [(ngModel)]="brushIntensity" class="tune-range-slider" />
+      </div>
+      <div class="tune-params-scroll">
+        <button type="button" class="tune-param-chip" [class.active]="brushMode === 'exposure'" (click)="brushMode = 'exposure'">
+          <i class="ti ti-sun"></i><span>Dodge / Burn</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="brushMode === 'temperature'" (click)="brushMode = 'temperature'">
+          <i class="ti ti-flame"></i><span>Temperature</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="brushMode === 'saturation'" (click)="brushMode = 'saturation'">
+          <i class="ti ti-droplet"></i><span>Saturation</span>
+        </button>
+        <button type="button" class="tune-param-chip" [class.active]="brushMode === 'eraser'" (click)="brushMode = 'eraser'">
+          <i class="ti ti-eraser"></i><span>Eraser</span>
+        </button>
+      </div>
+      <div class="sub-tool-action-bar">
+        <button class="tool-bar-btn cancel" (click)="cancelBrush()"><i class="ti ti-x"></i></button>
+        <span class="sub-bar-title">Brush</span>
+        <button class="tool-bar-btn apply" (click)="applyBrush()"><i class="ti ti-check"></i></button>
+      </div>
+    </div>
+
+    <!-- SUB-TOOL: COLOR GRADE -->
+    <div class="tool-sub-container" *ngIf="activeToolMode === 'colorgrade'">
+      <div class="curves-top-switcher">
+        <button class="switch-chip" [class.active]="colorGradeTonal === 'shadows'" (click)="colorGradeTonal = 'shadows'">
+          <i class="ti ti-moon"></i><span>Shadows</span>
+        </button>
+        <button class="switch-chip" [class.active]="colorGradeTonal === 'midtones'" (click)="colorGradeTonal = 'midtones'">
+          <i class="ti ti-sun-low"></i><span>Midtones</span>
+        </button>
+        <button class="switch-chip" [class.active]="colorGradeTonal === 'highlights'" (click)="colorGradeTonal = 'highlights'">
+          <i class="ti ti-sun-high"></i><span>Highlights</span>
+        </button>
+      </div>
+      <div class="tune-slider-box">
+        <input 
+          type="range" 
+          min="0" 
+          max="360" 
+          [ngModel]="colorGradeTonal === 'shadows' ? colorGradeShadows.hue : (colorGradeTonal === 'midtones' ? colorGradeMidtones.hue : colorGradeHighlights.hue)"
+          (ngModelChange)="colorGradeTonal === 'shadows' ? colorGradeShadows.hue = $event : (colorGradeTonal === 'midtones' ? colorGradeMidtones.hue = $event : colorGradeHighlights.hue = $event)"
+          class="tune-range-slider color-hue-slider" 
+        />
+      </div>
+      <div class="tune-params-scroll">
+        <button type="button" class="tune-param-chip" (click)="setColorGradePreset('teal-orange')">
+          <i class="ti ti-palette"></i><span>Teal & Orange</span>
+        </button>
+        <button type="button" class="tune-param-chip" (click)="setColorGradePreset('sunset')">
+          <i class="ti ti-sunset"></i><span>Sunset Glow</span>
+        </button>
+        <button type="button" class="tune-param-chip" (click)="setColorGradePreset('cold')">
+          <i class="ti ti-snowflake"></i><span>Moody Cold</span>
+        </button>
+        <button type="button" class="tune-param-chip" (click)="setColorGradePreset('vintage')">
+          <i class="ti ti-camera"></i><span>Vintage 70s</span>
+        </button>
+      </div>
+      <div class="sub-tool-action-bar">
+        <button class="tool-bar-btn cancel" (click)="cancelColorGrade()"><i class="ti ti-x"></i></button>
+        <span class="sub-bar-title">Colour Grade</span>
+        <button class="tool-bar-btn apply" (click)="applyColorGrade()"><i class="ti ti-check"></i></button>
+      </div>
+    </div>
+
+    <!-- SUB-TOOL: WHITE BALANCE -->
+    <div class="tool-sub-container" *ngIf="activeToolMode === 'whitebalance'">
+      <div class="tune-status-bar">
+        <span class="tune-param-name">Temperature</span>
+        <span class="tune-param-val">{{ formatValue(wbTemperature) }}</span>
+      </div>
+      <div class="tune-slider-box">
+        <input type="range" min="-100" max="100" [(ngModel)]="wbTemperature" class="tune-range-slider" />
+      </div>
+      <div class="tune-status-bar">
+        <span class="tune-param-name">Tint</span>
+        <span class="tune-param-val">{{ formatValue(wbTint) }}</span>
+      </div>
+      <div class="tune-slider-box">
+        <input type="range" min="-100" max="100" [(ngModel)]="wbTint" class="tune-range-slider" />
+      </div>
+      <div class="tune-params-scroll">
+        <button type="button" class="tune-param-chip" (click)="autoWhiteBalance()">
+          <i class="ti ti-wand"></i><span>Auto WB</span>
+        </button>
+      </div>
+      <div class="sub-tool-action-bar">
+        <button class="tool-bar-btn cancel" (click)="cancelWhiteBalance()"><i class="ti ti-x"></i></button>
+        <span class="sub-bar-title">White Balance</span>
+        <button class="tool-bar-btn apply" (click)="applyWhiteBalance()"><i class="ti ti-check"></i></button>
+      </div>
+    </div>
+
+    <!-- SUB-TOOL: OVERLAY / DOUBLE EXPOSURE (Presets + Custom Upload + Transform + Blend) -->
+    <div class="tool-sub-container overlay-sub-container" *ngIf="activeToolMode === 'overlay'">
+      
+      <!-- Top Sub-Tab Switcher: Transform & Sliders | Blend & Opacity | Presets -->
+      <div class="curves-top-switcher">
+        <button class="switch-chip" [class.active]="overlaySubTab === 'transform'" (click)="overlaySubTab = 'transform'">
+          <i class="ti ti-arrows-move"></i><span>Transform & Sliders</span>
+        </button>
+        <button class="switch-chip" [class.active]="overlaySubTab === 'blend'" (click)="overlaySubTab = 'blend'">
+          <i class="ti ti-layers-intersect"></i><span>Blend & Opacity</span>
+        </button>
+        <button class="switch-chip" [class.active]="overlaySubTab === 'presets'" (click)="overlaySubTab = 'presets'">
+          <i class="ti ti-sparkles"></i><span>Presets</span>
+        </button>
+      </div>
+
+      <!-- Tab 1: TRANSFORM & PRECISION SLIDERS -->
+      <div class="overlay-transform-view" *ngIf="overlaySubTab === 'transform'">
+        <div class="tune-status-bar">
+          <span class="tune-param-name">
+            {{ overlayTransformParam === 'scale' ? 'Scale / Size (Drag Canvas Handles or Slider)' : 'Rotation Angle' }}
+          </span>
+          <span class="tune-param-val">
+            {{ overlayTransformParam === 'scale' ? ((selectedLayer?.scale || overlayScale || 1).toFixed(2) + 'x (' + Math.round((selectedLayer?.scale || overlayScale || 1) * 100) + '%)') : ((selectedLayer?.rotation || overlayRotation || 0) + '°') }}
+          </span>
+        </div>
+        <div class="tune-slider-box">
+          <input 
+            *ngIf="overlayTransformParam === 'scale'" 
+            type="range" 
+            min="0.1" 
+            max="3.0" 
+            step="0.01" 
+            [(ngModel)]="overlayScale" 
+            (ngModelChange)="onScaleSliderChange($event)"
+            class="tune-range-slider" 
+          />
+          <input 
+            *ngIf="overlayTransformParam === 'rotate'" 
+            type="range" 
+            min="-180" 
+            max="180" 
+            step="1" 
+            [(ngModel)]="overlayRotation" 
+            (ngModelChange)="onRotationSliderChange($event)"
+            class="tune-range-slider" 
+          />
+        </div>
+        <div class="tune-params-scroll">
+          <button type="button" class="tune-param-chip" [class.active]="overlayTransformParam === 'scale'" (click)="overlayTransformParam = 'scale'">
+            <i class="ti ti-zoom-in"></i><span>Scale Slider</span>
+          </button>
+          <button type="button" class="tune-param-chip" [class.active]="overlayTransformParam === 'rotate'" (click)="overlayTransformParam = 'rotate'">
+            <i class="ti ti-rotate-2"></i><span>Rotate Slider</span>
+          </button>
+          <button type="button" class="tune-param-chip" (click)="setQuickScale(0.5)">
+            <span>0.5x</span>
+          </button>
+          <button type="button" class="tune-param-chip" (click)="setQuickScale(1.0)">
+            <span>1.0x</span>
+          </button>
+          <button type="button" class="tune-param-chip" (click)="setQuickScale(1.5)">
+            <span>1.5x</span>
+          </button>
+          <button type="button" class="tune-param-chip" (click)="setQuickScale(2.0)">
+            <span>2.0x</span>
+          </button>
+          <button type="button" class="tune-param-chip" (click)="resetOverlayPosition()">
+            <i class="ti ti-focus-centered"></i><span>Center</span>
+          </button>
+          <button type="button" class="tune-param-chip" [class.active]="overlayFlipH" (click)="flipOverlayH()">
+            <i class="ti ti-flip-horizontal"></i><span>Flip H</span>
+          </button>
+          <button type="button" class="tune-param-chip" [class.active]="overlayFlipV" (click)="flipOverlayV()">
+            <i class="ti ti-flip-vertical"></i><span>Flip V</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tab 2: BLEND & OPACITY -->
+      <div class="overlay-blend-view" *ngIf="overlaySubTab === 'blend'">
+        <div class="tune-status-bar">
+          <span class="tune-param-name">Overlay Opacity</span>
+          <span class="tune-param-val">{{ overlayOpacity }}%</span>
+        </div>
+        <div class="tune-slider-box">
+          <input 
+            type="range" 
+            min="0" 
+            max="100" 
+            step="1"
+            [(ngModel)]="overlayOpacity" 
+            (ngModelChange)="onOpacitySliderChange($event)"
+            class="tune-range-slider" 
+          />
+        </div>
+        <div class="tune-params-scroll">
+          <button 
+            *ngFor="let m of blendModesList" 
+            type="button" 
+            class="tune-param-chip" 
+            [class.active]="overlayBlendMode === m.id" 
+            (click)="setOverlayBlendMode(m.id)"
+          >
+            <span>{{ m.label }}</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tab 3: PRESETS CAROUSEL (Built-in Lighting, Textures & Custom Upload) -->
+      <div class="overlay-presets-view" *ngIf="overlaySubTab === 'presets'">
+        <div class="presets-chips-scroll">
+          <!-- Upload custom button -->
+          <button type="button" class="preset-overlay-chip upload-chip" (click)="triggerOverlayUpload()">
+            <div class="preset-mini-thumb upload-thumb">
+              <i class="ti ti-photo-plus"></i>
+            </div>
+            <span class="preset-name">Upload Photo/PNG</span>
+          </button>
+
+          <!-- Preset overlay items -->
+          <button 
+            *ngFor="let p of overlayPresets" 
+            type="button" 
+            class="preset-overlay-chip"
+            [class.active]="activeOverlayPresetId === p.id"
+            (click)="selectOverlayPreset(p.id)"
+          >
+            <div class="preset-mini-thumb">
+              <img [src]="p.dataUrl" [alt]="p.name" />
+            </div>
+            <span class="preset-name">{{ p.name }}</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Footer with Layer Shortcut -->
+      <div class="sub-tool-action-bar">
+        <button class="tool-bar-btn cancel" (click)="cancelOverlay()" title="Cancel Overlay"><i class="ti ti-x"></i></button>
+        <button type="button" class="overlay-layer-toggle-btn" (click)="toggleLayersPanel()" title="Open Layers List">
+          <i class="ti ti-stack-2"></i>
+          <span>{{ selectedLayer?.name || 'Overlay' }}</span>
+        </button>
+        <button class="tool-bar-btn apply" (click)="applyOverlay()" title="Apply Overlay"><i class="ti ti-check"></i></button>
+      </div>
+    </div>
+
+    <!-- SUB-TOOL: HEALING -->
+    <div class="tool-sub-container" *ngIf="activeToolMode === 'healing'">
+      <div class="selective-hint"><span>Touch or tap over blemishes to heal</span></div>
+      <div class="sub-tool-action-bar">
+        <button class="tool-bar-btn cancel" (click)="cancelHealing()"><i class="ti ti-x"></i></button>
+        <span class="sub-bar-title">Healing</span>
+        <button class="tool-bar-btn apply" (click)="applyHealing()"><i class="ti ti-check"></i></button>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- 4. STANDARD DUAL BOTTOM BARS                                    -->
+    <!-- ============================================================== -->
+    <div class="dual-bottom-bars-wrapper" *ngIf="activeToolMode === 'none'">
+      <!-- UPPER BAR: Tools Quick Access (All Tools directly available) -->
+      <nav class="upper-bar tools-upper-bar" *ngIf="activeMainTab === 'tools'">
+        <button type="button" class="upper-tool-btn" (click)="openTool('tune')">
+          <i class="ti ti-adjustments-horizontal"></i>
+          <span>Tune image</span>
+        </button>
+
+        <button type="button" class="upper-tool-btn" (click)="openTool('crop')">
+          <i class="ti ti-crop"></i>
+          <span>Crop</span>
+        </button>
+
+        <button type="button" class="upper-tool-btn" (click)="openTool('perspective')">
+          <i class="ti ti-box-model"></i>
+          <span>Perspective</span>
+        </button>
+
+        <button type="button" class="upper-tool-btn" (click)="openTool('expand')">
+          <i class="ti ti-arrows-maximize"></i>
+          <span>Expand</span>
+        </button>
+
+        <button type="button" class="upper-tool-btn" (click)="openTool('hdr')">
+          <i class="ti ti-mountain"></i>
+          <span>HDR Scape</span>
+        </button>
+
+        <button type="button" class="upper-tool-btn" (click)="openTool('curves')">
+          <i class="ti ti-spline"></i>
+          <span>Curves</span>
+        </button>
+
+        <button type="button" class="upper-tool-btn" (click)="openTool('selective')">
+          <i class="ti ti-target"></i>
+          <span>Selective</span>
+        </button>
+
+        <button type="button" class="upper-tool-btn" (click)="openTool('brush')">
+          <i class="ti ti-brush"></i>
+          <span>Brush</span>
+        </button>
+
+        <button type="button" class="upper-tool-btn" (click)="openTool('colorgrade')">
+          <i class="ti ti-color-swatch"></i>
+          <span>Colour grade</span>
+        </button>
+
+        <button type="button" class="upper-tool-btn" (click)="openTool('whitebalance')">
+          <i class="ti ti-square-letter-w"></i>
+          <span>White balance</span>
+        </button>
+
+        <button type="button" class="upper-tool-btn" (click)="openTool('overlay')">
+          <i class="ti ti-layers-intersect"></i>
+          <span>Overlay</span>
+        </button>
+
+        <button type="button" class="upper-tool-btn" (click)="openTool('healing')">
+          <i class="ti ti-bandage"></i>
+          <span>Healing</span>
+        </button>
+
+        <button type="button" class="upper-tool-btn" (click)="showCustomiseSheet = true">
+          <i class="ti ti-layout-grid"></i>
+          <span>All (30+)</span>
+        </button>
+      </nav>
+
+      <!-- UPPER BAR: Styles / Filters Carousel -->
+      <nav class="upper-bar styles-upper-bar" *ngIf="activeMainTab === 'styles'">
+        <div class="styles-carousel">
+          <button 
+            *ngFor="let s of filterStyles" 
+            type="button" 
+            class="style-preset-card"
+            [class.active]="state.filter === s.id"
+            (click)="applyFilterStyle(s)"
+          >
+            <div class="style-thumb" [style.filter]="s.cssStyle">
+              <img [src]="state.imageUrl" alt="{{ s.label }}" />
+            </div>
+            <span class="style-label">{{ s.label }}</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- LOWER BAR: Styles, Tools, Export -->
+      <nav class="lower-bar">
+        <button 
+          type="button" 
+          class="lower-nav-tab" 
+          [class.active]="activeMainTab === 'styles'"
+          (click)="setMainTab('styles')"
+        >
+          <i class="ti ti-wand"></i>
+          <span>Styles</span>
+        </button>
+
+        <button 
+          type="button" 
+          class="lower-nav-tab tools-tab" 
+          [class.active]="activeMainTab === 'tools'"
+          (click)="setMainTab('tools')"
+        >
+          <i class="ti ti-tools"></i>
+          <span>Tools</span>
+        </button>
+
+        <button 
+          type="button" 
+          class="lower-nav-tab" 
+          [class.active]="activeMainTab === 'export'"
+          (click)="setMainTab('export')"
+        >
+          <i class="ti ti-share"></i>
+          <span>Export</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- 5. SNAPSEED TOOLS FULL MODAL SHEET (Matching Screenshots)       -->
+    <!-- ============================================================== -->
+    <div class="modal-backdrop" *ngIf="showCustomiseSheet" (click)="showCustomiseSheet = false">
+      <div class="customise-sheet snapseed-tools-sheet" (click)="$event.stopPropagation()">
+        
+        <!-- Category Tabs matching Screenshot: 🔍, ALL, REFINE, FIX, STYLE -->
+        <div class="snapseed-tools-header">
+          <div class="search-box-wrap">
+            <i class="ti ti-search search-icon"></i>
+            <input 
+              type="text" 
+              placeholder="Search tools..." 
+              [(ngModel)]="toolSearchQuery" 
+              class="tool-search-input" 
+            />
+          </div>
+
+          <div class="category-tabs-bar">
+            <button 
+              type="button" 
+              class="cat-pill" 
+              [class.active]="toolFilterCategory === 'all'"
+              (click)="toolFilterCategory = 'all'"
+            >
+              <i class="ti ti-grid-dots"></i>
+              <span>ALL</span>
+            </button>
+            <button 
+              type="button" 
+              class="cat-pill" 
+              [class.active]="toolFilterCategory === 'refine'"
+              (click)="toolFilterCategory = 'refine'"
+            >
+              <i class="ti ti-adjustments"></i>
+              <span>REFINE</span>
+            </button>
+            <button 
+              type="button" 
+              class="cat-pill" 
+              [class.active]="toolFilterCategory === 'fix'"
+              (click)="toolFilterCategory = 'fix'"
+            >
+              <i class="ti ti-wand"></i>
+              <span>FIX</span>
+            </button>
+            <button 
+              type="button" 
+              class="cat-pill" 
+              [class.active]="toolFilterCategory === 'style'"
+              (click)="toolFilterCategory = 'style'"
+            >
+              <i class="ti ti-sparkles"></i>
+              <span>STYLE</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 4-Column Tools Grid matching Screenshot -->
+        <div class="tools-grid-scroll">
+          <div 
+            *ngFor="let tool of filteredTools" 
+            class="tool-grid-item"
+            (click)="openTool(tool.id)"
+          >
+            <div class="tool-icon-box">
+              <span class="tool-badge-pill" *ngIf="tool.badge" [ngClass]="tool.badgeColor || 'blue'">
+                {{ tool.badge }}
+              </span>
+              <i class="ti" [ngClass]="tool.icon"></i>
+            </div>
+            <span class="tool-label-text">{{ tool.label }}</span>
+          </div>
+        </div>
+
+        <!-- Bottom Bordered CLOSE Button matching Screenshot -->
+        <div class="tools-sheet-footer">
+          <button type="button" class="btn-snapseed-close" (click)="showCustomiseSheet = false">
+            <i class="ti ti-x"></i>
+            <span>CLOSE</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPORT BOTTOM SHEET -->
+    <div class="modal-backdrop" *ngIf="showExportSheet" (click)="showExportSheet = false">
+      <div class="export-sheet" (click)="$event.stopPropagation()">
+        <div class="sheet-drag-handle"></div>
+        <div class="sheet-header">
+          <h3>Export</h3>
+          <button class="sheet-close-btn" (click)="showExportSheet = false"><i class="ti ti-x"></i></button>
+        </div>
+
+        <div class="export-format-selector">
+          <span class="format-label">Format:</span>
+          <div class="chips-row">
+            <button type="button" class="chip-format" [class.active]="selectedFormat === 'image/jpeg'" (click)="selectedFormat = 'image/jpeg'">
+              <i class="ti ti-photo"></i>
+              <span>JPG</span>
+            </button>
+            <button type="button" class="chip-format" [class.active]="selectedFormat === 'image/png'" (click)="selectedFormat = 'image/png'">
+              <i class="ti ti-file-text"></i>
+              <span>PNG</span>
+            </button>
+            <button type="button" class="chip-format" [class.active]="selectedFormat === 'image/webp'" (click)="selectedFormat = 'image/webp'">
+              <i class="ti ti-sparkles"></i>
+              <span>WEBP</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="export-actions-list">
+          <div class="export-action-item" (click)="showToast('Saved to device storage'); showExportSheet = false">
+            <i class="ti ti-device-floppy"></i>
+            <div class="action-text">
+              <strong>Save</strong>
+              <span>Save with current settings</span>
+            </div>
+          </div>
+          <div class="export-action-item" (click)="showToast('Exported photo'); showExportSheet = false">
+            <i class="ti ti-download"></i>
+            <div class="action-text">
+              <strong>Export</strong>
+              <span>Create a copy of your photo</span>
+            </div>
+          </div>
+          <div class="export-action-item" (click)="showToast('Sharing photo...'); showExportSheet = false">
+            <i class="ti ti-share"></i>
+            <div class="action-text">
+              <strong>Share</strong>
+              <span>Share to Instagram, WhatsApp, or other apps</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- 4. LAYERS SIDE PANEL DRAWER (Slide-in from Right)              -->
+    <!-- ============================================================== -->
+    <div class="layers-drawer-backdrop" *ngIf="showLayersPanel" (click)="closeLayersPanel()">
+      <aside class="layers-side-panel" (click)="$event.stopPropagation()">
+        <!-- Header -->
+        <div class="layers-panel-header">
+          <div class="header-left">
+            <i class="ti ti-stack-2 panel-icon"></i>
+            <div class="header-title-group">
+              <h3>Layers</h3>
+              <span class="layers-counter-pill">{{ layers.length }} {{ layers.length === 1 ? 'Layer' : 'Layers' }}</span>
+            </div>
+          </div>
+          <div class="header-actions">
+            <button class="panel-icon-btn add-btn" (click)="triggerAddLayerFile()" title="Add Image Layer">
+              <i class="ti ti-plus"></i>
+            </button>
+            <button class="panel-icon-btn close-btn" (click)="closeLayersPanel()" title="Close Layers">
+              <i class="ti ti-x"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Action Strip -->
+        <div class="layers-quick-bar">
+          <button type="button" class="quick-action-btn" (click)="triggerAddLayerFile()">
+            <i class="ti ti-photo-plus"></i>
+            <span>Add Photo</span>
+          </button>
+          <button type="button" class="quick-action-btn" (click)="openOverlayFromLayers()">
+            <i class="ti ti-sparkles"></i>
+            <span>Add Effect</span>
+          </button>
+          <button type="button" class="quick-action-btn" (click)="mergeAllLayers()" [disabled]="layers.length <= 1">
+            <i class="ti ti-layers-intersect"></i>
+            <span>Merge Down</span>
+          </button>
+        </div>
+
+        <!-- Layers List (Top to Bottom visual stack: Front-most on top) -->
+        <div class="layers-list-scroll">
+          <div 
+            *ngFor="let layer of displayLayers; let displayIdx = index; trackBy: trackByLayerId"
+            class="layer-card"
+            [class.selected]="layer.id === selectedLayerId"
+            (click)="selectLayer(layer.id)"
+          >
+            <!-- Thumbnail -->
+            <div class="layer-thumb-box">
+              <img [src]="layer.imageUrl" [alt]="layer.name" />
+              <span class="layer-type-tag" [ngClass]="layer.type">{{ layer.type === 'base' ? 'BASE' : (displayLayers.length - displayIdx) }}</span>
+            </div>
+
+            <!-- Layer Details -->
+            <div class="layer-info-col" (click)="editLayerFromList(layer, $event)">
+              <div class="layer-name-row">
+                <span class="layer-name-text" title="Click to rename" (click)="promptRenameLayer(layer, $event)">
+                  {{ layer.name }}
+                </span>
+                <span class="edit-badge" *ngIf="layer.type !== 'base'">
+                  <i class="ti ti-adjustments"></i> Edit
+                </span>
+              </div>
+              <div class="layer-meta-row">
+                <span class="layer-blend-badge">{{ formatBlendMode(layer.blendMode) }}</span>
+                <span class="layer-opacity-text">{{ layer.opacity }}%</span>
+                <span class="layer-scale-text" *ngIf="layer.type !== 'base'">{{ (layer.scale || 1).toFixed(2) }}x</span>
+              </div>
+            </div>
+
+            <!-- Reorder & Visibility Actions -->
+            <div class="layer-actions-col">
+              <!-- Move Forward (Bring Up) -->
+              <button 
+                type="button" 
+                class="layer-btn-icon" 
+                [disabled]="isTopLayer(layer.id)" 
+                (click)="moveLayerForward(layer.id, $event)"
+                title="Bring Forward (Move Up)"
+              >
+                <i class="ti ti-arrow-up"></i>
+              </button>
+
+              <!-- Move Backward (Send Down) -->
+              <button 
+                type="button" 
+                class="layer-btn-icon" 
+                [disabled]="isBottomLayer(layer.id)" 
+                (click)="moveLayerBackward(layer.id, $event)"
+                title="Send Backward (Move Down)"
+              >
+                <i class="ti ti-arrow-down"></i>
+              </button>
+
+              <!-- Visibility Toggle -->
+              <button 
+                type="button" 
+                class="layer-btn-icon eye-btn" 
+                [class.hidden-layer]="!layer.visible"
+                (click)="toggleLayerVisibility(layer, $event)"
+                [title]="layer.visible ? 'Hide Layer' : 'Show Layer'"
+              >
+                <i class="ti" [ngClass]="layer.visible ? 'ti-eye' : 'ti-eye-off'"></i>
+              </button>
+
+              <!-- Delete Layer (if more than 1) -->
+              <button 
+                *ngIf="layers.length > 1 && layer.type !== 'base'"
+                type="button" 
+                class="layer-btn-icon delete-btn" 
+                (click)="deleteLayer(layer.id, $event)"
+                title="Delete Layer"
+              >
+                <i class="ti ti-trash"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Layer Inspector Settings Panel (at the bottom of side drawer) -->
+        <div class="active-layer-inspector" *ngIf="selectedLayer">
+          <div class="inspector-header">
+            <span class="inspector-title">Adjust: {{ selectedLayer.name }}</span>
+            <button class="inspector-dup-btn" (click)="duplicateLayer(selectedLayer)" title="Duplicate Layer">
+              <i class="ti ti-copy"></i>
+              <span>Duplicate</span>
+            </button>
+          </div>
+
+          <!-- Edit on Canvas Prominent Button -->
+          <button 
+            *ngIf="selectedLayer.type !== 'base'" 
+            type="button" 
+            class="inspector-edit-canvas-btn" 
+            (click)="editLayerAsOverlay(selectedLayer)"
+          >
+            <i class="ti ti-arrows-maximize"></i>
+            <span>Edit on Canvas & Sliders</span>
+          </button>
+
+          <!-- Scale Slider in Inspector -->
+          <div class="inspector-slider-row" *ngIf="selectedLayer.type !== 'base'">
+            <div class="slider-meta">
+              <span class="slider-label">Scale / Size</span>
+              <span class="slider-val">{{ (selectedLayer.scale || 1).toFixed(2) }}x</span>
+            </div>
+            <input 
+              type="range" 
+              min="0.1" 
+              max="3.0" 
+              step="0.01" 
+              [(ngModel)]="selectedLayer.scale" 
+              (ngModelChange)="onLayerScaleChange(selectedLayer)"
+              class="layer-range-slider"
+            />
+          </div>
+
+          <!-- Opacity Slider -->
+          <div class="inspector-slider-row">
+            <div class="slider-meta">
+              <span class="slider-label">Opacity</span>
+              <span class="slider-val">{{ selectedLayer.opacity }}%</span>
+            </div>
+            <input 
+              type="range" 
+              min="5" 
+              max="100" 
+              [(ngModel)]="selectedLayer.opacity" 
+              class="layer-range-slider"
+            />
+          </div>
+
+          <!-- Blend Modes Selector (if not base) -->
+          <div class="inspector-blend-row" *ngIf="selectedLayer.type !== 'base'">
+            <span class="blend-label">Blend Mode:</span>
+            <div class="blend-chips-scroll">
+              <button 
+                *ngFor="let m of blendModesList" 
+                type="button" 
+                class="blend-chip"
+                [class.active]="selectedLayer.blendMode === m.id"
+                (click)="selectedLayer.blendMode = m.id"
+              >
+                {{ m.label }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Transform Controls for active layer -->
+          <div class="inspector-transform-row" *ngIf="selectedLayer.type !== 'base'">
+            <button type="button" class="transform-chip-btn" (click)="resetLayerPosition(selectedLayer)">
+              <i class="ti ti-focus-centered"></i>
+              <span>Center</span>
+            </button>
+            <button type="button" class="transform-chip-btn" [class.active]="selectedLayer.flipH" (click)="flipLayerH(selectedLayer)">
+              <i class="ti ti-flip-horizontal"></i>
+              <span>Flip H</span>
+            </button>
+            <button type="button" class="transform-chip-btn" [class.active]="selectedLayer.flipV" (click)="flipLayerV(selectedLayer)">
+              <i class="ti ti-flip-vertical"></i>
+              <span>Flip V</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- MORE MENU DROPDOWN -->
+    <div class="more-menu-dropdown" *ngIf="showMoreMenu" (click)="showMoreMenu = false">
+      <div class="menu-card" (click)="$event.stopPropagation()">
+        <button class="menu-item" (click)="toggleLayersPanel(); showMoreMenu = false"><i class="ti ti-stack-2"></i><span>Layers Panel</span></button>
+        <button class="menu-item" (click)="startCompare(); showMoreMenu = false"><i class="ti ti-eye"></i><span>Compare Original</span></button>
+        <button class="menu-item" (click)="openTool('customise'); showMoreMenu = false"><i class="ti ti-layout-grid"></i><span>All Tools</span></button>
+        <button class="menu-item" (click)="goBackHome(); showMoreMenu = false"><i class="ti ti-arrow-left"></i><span>Exit Editor</span></button>
+      </div>
+    </div>
+  </div>
+</div>

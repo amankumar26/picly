@@ -1,0 +1,957 @@
+// Picly Home Page - Minimalist Black & White Glassmorphism Theme
+
+.mobile-viewport-container {
+  width: 100%;
+  height: 100dvh;
+  background-color: #000000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
+
+.mobile-frame {
+  width: 100%;
+  max-width: 480px;
+  height: 100%;
+  background: #000000;
+  background-image: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.03) 0%, transparent 60%);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.9);
+}
+
+// 1. Top Header with Minimal Branding & Glass Capsule
+.snapseed-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: max(16px, env(safe-area-inset-top, 16px)) 18px 12px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  z-index: 40;
+  user-select: none;
+}
+
+.snapseed-logo {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 26px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+  line-height: 1;
+  text-transform: lowercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &::after {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ffffff;
+    margin-left: 2px;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+  }
+}
+
+// Minimal Glass Pill (SELECT & MORE)
+.select-pill-group {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9999px;
+  padding: 4px 10px;
+  gap: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.24);
+  }
+
+  .pill-select-all-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    cursor: pointer;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    text-transform: uppercase;
+    font-family: inherit;
+    transition: all 0.25s ease;
+
+    i {
+      font-size: 13px;
+    }
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.28);
+    }
+
+    &.all-checked {
+      background: #f59e0b;
+      color: #000000;
+      border-color: #f59e0b;
+    }
+  }
+
+  .pill-select-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    cursor: pointer;
+    padding: 3px 6px;
+    text-transform: uppercase;
+    font-family: inherit;
+    transition: all 0.25s ease;
+
+    i {
+      font-size: 13px;
+    }
+
+    &.active {
+      color: #000000;
+      background: #ffffff;
+      border-radius: 9999px;
+      padding: 3px 8px;
+    }
+  }
+
+  .pill-divider {
+    width: 1px;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .pill-more-btn {
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    transition: transform 0.25s ease, opacity 0.2s ease;
+
+    &:active {
+      transform: scale(0.9);
+    }
+  }
+}
+
+// Glass More Menu Dropdown
+.dropdown-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 80;
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.more-menu-panel {
+  position: absolute;
+  top: max(65px, env(safe-area-inset-top, 65px));
+  right: 18px;
+  background: rgba(18, 18, 22, 0.85);
+  backdrop-filter: blur(32px) saturate(190%);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 8px;
+  min-width: 200px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+  z-index: 85;
+  animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+  .menu-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+    i {
+      font-size: 18px;
+      color: #94a3b8;
+      transition: color 0.2s ease;
+    }
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #ffffff;
+
+      i {
+        color: #ffffff;
+      }
+    }
+
+    &:active {
+      transform: scale(0.98);
+    }
+  }
+
+  .menu-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 6px 0;
+  }
+}
+
+// 2. Sub-Header Controls Bar (ALL ▾ and View Mode Toggles)
+.controls-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px 12px;
+  background: #000000;
+  user-select: none;
+
+  &.in-select-mode {
+    background: rgba(245, 158, 11, 0.04);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.15);
+  }
+}
+
+.select-mode-subbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0;
+
+  .select-counter {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #94a3b8;
+
+    i {
+      font-size: 16px;
+      color: #f59e0b;
+    }
+
+    strong {
+      color: #ffffff;
+      font-weight: 700;
+    }
+  }
+
+  .btn-quick-select-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 9999px;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.16);
+      color: #ffffff;
+    }
+
+    &:active {
+      transform: scale(0.96);
+    }
+  }
+}
+
+.album-filter-container {
+  position: relative;
+}
+
+.album-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 6px 14px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  .album-chevron {
+    font-size: 13px;
+    color: #94a3b8;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &.rotated {
+      transform: rotate(180deg);
+    }
+  }
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+.album-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  background: rgba(18, 18, 22, 0.9);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 6px;
+  min-width: 150px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+  z-index: 50;
+  animation: scaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+
+  .album-option {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+    i {
+      font-size: 14px;
+    }
+
+    &.active {
+      background: #ffffff;
+      color: #000000;
+    }
+
+    &:hover:not(.active) {
+      background: rgba(255, 255, 255, 0.08);
+      color: #ffffff;
+    }
+  }
+}
+
+.view-toggle-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  padding: 3px 6px;
+
+  .view-icon-btn {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 17px;
+    padding: 5px 7px;
+    border-radius: 9999px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &.active {
+      color: #000000;
+      background: #ffffff;
+      box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
+    }
+
+    &:hover:not(.active) {
+      color: #ffffff;
+    }
+  }
+}
+
+// 3. Photo Gallery Viewport
+.gallery-viewport {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: #000000;
+  padding: 0 14px 16px;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 2px;
+  }
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &.list {
+    grid-template-columns: 1fr;
+    gap: 12px;
+
+    .gallery-item {
+      aspect-ratio: 16 / 9;
+      border-radius: 16px;
+    }
+  }
+}
+
+.gallery-item {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0e0e11;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  &.selected {
+    border-color: #ffffff;
+    box-shadow: 0 0 0 2px #ffffff, 0 8px 24px rgba(255, 255, 255, 0.2);
+
+    .gallery-thumbnail {
+      opacity: 0.95;
+    }
+  }
+
+  &.multi-selected {
+    border-color: #ffffff;
+    box-shadow: 0 0 0 2px #ffffff;
+  }
+}
+
+.photo-card-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.gallery-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gallery-item:hover .gallery-thumbnail {
+  transform: scale(1.04);
+}
+
+// Multi-select Checkbox
+.selection-checkbox {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid #ffffff;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #000000;
+  font-size: 14px;
+  font-weight: 700;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  i {
+    width: 100%;
+    height: 100%;
+    background: #ffffff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+// Active Selection Overlay Ring
+.active-selection-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 8px;
+
+  .edit-badge-indicator {
+    background: #ffffff;
+    color: #000000;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  }
+}
+
+.empty-gallery-state {
+  grid-column: 1 / -1;
+  padding: 60px 20px;
+  text-align: center;
+  color: #94a3b8;
+
+  i {
+    font-size: 44px;
+    color: #475569;
+    margin-bottom: 12px;
+  }
+
+  p {
+    margin: 0 0 16px;
+    font-size: 14px;
+  }
+
+  .empty-add-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #ffffff;
+    color: #000000;
+    font-weight: 600;
+    border: none;
+    padding: 10px 22px;
+    border-radius: 9999px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+    i {
+      font-size: 16px;
+      color: inherit;
+      margin-bottom: 0;
+    }
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(255, 255, 255, 0.2);
+    }
+  }
+}
+
+// 4. Floating & Bottom Action Bar (Black & White Glassmorphism)
+.snapseed-footer {
+  flex-shrink: 0;
+  background: linear-gradient(to top, #000000 70%, transparent);
+  padding: 10px 18px max(16px, env(safe-area-inset-bottom, 16px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 30;
+}
+
+// Minimalist Frosted Glass Edit Banner
+.edit-action-banner {
+  width: 100%;
+  background: rgba(18, 18, 22, 0.72);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7);
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  .banner-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    overflow: hidden;
+  }
+
+  .banner-thumb {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .banner-text {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+
+    .banner-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 160px;
+    }
+
+    .banner-status {
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 500;
+    }
+  }
+
+  .banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .btn-delete-single {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 17px;
+    padding: 6px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &:hover {
+      color: #ef4444;
+      background: rgba(239, 68, 68, 0.14);
+    }
+
+    &:active {
+      transform: scale(0.92);
+    }
+  }
+
+  .btn-cancel-selection {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 18px;
+    padding: 6px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  .btn-primary-edit {
+    background: #ffffff;
+    color: #000000;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.6px;
+    border: none;
+    border-radius: 9999px;
+    padding: 8px 18px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(255, 255, 255, 0.25);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+    i {
+      font-size: 16px;
+    }
+
+    &:hover {
+      background: #f1f5f9;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(255, 255, 255, 0.35);
+    }
+
+    &:active {
+      transform: scale(0.96);
+    }
+  }
+}
+
+// Minimalist Frosted Glass Camera Pill
+.camera-pill-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+  width: 100%;
+}
+
+.camera-pill-btn {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+  padding: 8px 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.32);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  .camera-lens-ring {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #ffffff;
+  }
+
+  .camera-label {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: #ffffff;
+    font-family: inherit;
+  }
+}
+
+// Full-Width Black & White Button
+.bottom-button-container {
+  width: 100%;
+}
+
+.select-mode-actions-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+
+  .snapseed-delete-btn {
+    flex: 1;
+    background: rgba(239, 68, 68, 0.14);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    color: #f87171;
+    border: 1.5px solid rgba(239, 68, 68, 0.35);
+    border-radius: 12px;
+    padding: 15px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    font-family: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+    i {
+      font-size: 16px;
+    }
+
+    &:hover:not(:disabled) {
+      background: #ef4444;
+      color: #ffffff;
+      border-color: #ef4444;
+      box-shadow: 0 6px 20px rgba(239, 68, 68, 0.35);
+    }
+
+    &:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+
+    &:disabled {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: #475569;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+  }
+
+  .edit-selected-btn {
+    flex: 1;
+    padding: 15px 12px;
+  }
+}
+
+.snapseed-green-btn {
+  width: 100%;
+  background: #ffffff;
+  color: #000000;
+  border: none;
+  border-radius: 12px;
+  padding: 16px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.15);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    background: #f8fafc;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(255, 255, 255, 0.25);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+
+  &.edit-selected-btn:disabled {
+    background: rgba(255, 255, 255, 0.1);
+    color: #64748b;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+  }
+}
+
+// Toast Notification (Minimal Glass Pill)
+.toast-notification {
+  position: absolute;
+  top: max(75px, env(safe-area-inset-top, 75px));
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 20, 24, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  padding: 8px 18px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 100;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+  i {
+    color: #ffffff;
+    font-size: 15px;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}

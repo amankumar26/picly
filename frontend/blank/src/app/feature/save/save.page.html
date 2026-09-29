@@ -1,0 +1,97 @@
+<div class="mobile-viewport-container">
+  <div class="mobile-frame">
+    <!-- Top Bar with Close, Undo, Redo, Done -->
+    <app-editor-header nextRoute="/feature/save"></app-editor-header>
+
+    <!-- Save Preview Area -->
+    <main class="editor-content">
+      <div class="preview-stage">
+        <div class="image-wrapper" [style.filter]="filterCss">
+          <img 
+            [src]="state.imageUrl" 
+            alt="Final Preview" 
+            class="target-image"
+            [style.transform]="'rotate(' + state.rotation + 'deg) scaleX(' + (state.flipH ? -1 : 1) + ') scaleY(' + (state.flipV ? -1 : 1) + ')'" 
+          />
+        </div>
+      </div>
+
+      <!-- Success Notification Toast -->
+      <div class="success-banner" *ngIf="exportSuccess">
+        <i class="ti ti-circle-check"></i>
+        <span>Image downloaded successfully!</span>
+      </div>
+
+      <!-- Export Settings Panel -->
+      <section class="controls-panel">
+        <div class="section-meta">
+          <span class="panel-title">Export Options</span>
+          <span class="meta-label">Ready to save</span>
+        </div>
+
+        <!-- Format Selector -->
+        <div class="format-chips">
+          <button 
+            type="button" 
+            class="chip-btn" 
+            [class.active]="selectedFormat === 'image/jpeg'"
+            (click)="selectedFormat = 'image/jpeg'"
+          >
+            JPG
+          </button>
+          <button 
+            type="button" 
+            class="chip-btn" 
+            [class.active]="selectedFormat === 'image/png'"
+            (click)="selectedFormat = 'image/png'"
+          >
+            PNG
+          </button>
+          <button 
+            type="button" 
+            class="chip-btn" 
+            [class.active]="selectedFormat === 'image/webp'"
+            (click)="selectedFormat = 'image/webp'"
+          >
+            WEBP
+          </button>
+        </div>
+
+        <!-- Primary Action: Save to Device -->
+        <button 
+          type="button" 
+          class="btn-primary" 
+          [disabled]="isExporting"
+          (click)="downloadImage()"
+        >
+          <i class="ti ti-download" *ngIf="!isExporting"></i>
+          <span *ngIf="!isExporting">Save to Device</span>
+          <span *ngIf="isExporting">Processing Image...</span>
+        </button>
+
+        <!-- Secondary Action: Share Photo -->
+        <button 
+          type="button" 
+          class="btn-secondary" 
+          (click)="shareImage()"
+        >
+          <i class="ti ti-share"></i>
+          <span>Share Photo</span>
+        </button>
+
+        <!-- Back to Home -->
+        <button 
+          type="button" 
+          class="btn-ghost" 
+          (click)="goToHome()"
+        >
+          <i class="ti ti-home"></i>
+          <span>Back to Home</span>
+        </button>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation: Save active -->
+    <app-editor-bottom-bar activeTab="save"></app-editor-bottom-bar>
+  </div>
+</div>

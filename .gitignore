@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+*/node_modules/
+*/*/node_modules/
+
+# Compiled output & build
+dist/
+build/
+www/
+out-tsc/
+bazel-out/
+*.tsbuildinfo
+
+# Ionic & Angular
+.ionic/
+.angular/
+platforms/
+plugins/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Editor & OS files
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.history/
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+
+# Temp
+.tmp/
+.temp/
+tmp/

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Adjust - Photo Editor</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.2.0/tabler-icons.min.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../editor.css">
+</head>
+<body>
+  <div class="mobile-frame">
+    <!-- Top Header -->
+    <header class="top-header">
+      <a href="../../index.html" class="icon-btn" title="Back to Home"><i class="ti ti-x"></i></a>
+      <div class="history-actions">
+        <button class="icon-btn" id="btnUndo" title="Undo"><i class="ti ti-arrow-back-up"></i></button>
+        <button class="icon-btn" id="btnRedo" title="Redo"><i class="ti ti-arrow-forward-up"></i></button>
+      </div>
+      <a href="../save/index.html" class="icon-btn check-btn" title="Save / Export"><i class="ti ti-check"></i></a>
+    </header>
+
+    <!-- Editor Body -->
+    <main class="editor-body">
+      <div class="preview-stage">
+        <img id="previewImg" alt="Adjust preview" />
+      </div>
+
+      <section class="controls-card">
+        <div class="card-header">
+          <span>Tune Adjustments</span>
+          <button id="btnReset" style="background:transparent;border:none;color:var(--text-accent);font-size:12px;cursor:pointer;">Reset</button>
+        </div>
+
+        <div class="slider-unit">
+          <div class="slider-meta"><span>Brightness</span><span id="valBrightness">+20</span></div>
+          <input type="range" min="-100" max="100" id="sliderBrightness" class="range-input">
+        </div>
+
+        <div class="slider-unit">
+          <div class="slider-meta"><span>Contrast</span><span id="valContrast">+10</span></div>
+          <input type="range" min="-100" max="100" id="sliderContrast" class="range-input">
+        </div>
+
+        <div class="slider-unit">
+          <div class="slider-meta"><span>Saturation</span><span id="valSaturation">0</span></div>
+          <input type="range" min="-100" max="100" id="sliderSaturation" class="range-input">
+        </div>
+
+        <div class="slider-unit">
+          <div class="slider-meta"><span>Exposure</span><span id="valExposure">0</span></div>
+          <input type="range" min="-100" max="100" id="sliderExposure" class="range-input">
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Nav -->
+    <nav class="bottom-nav">
+      <a href="../adjust/index.html" class="nav-link active"><i class="ti ti-adjustments"></i><span>Adjust</span></a>
+      <a href="../filter/index.html" class="nav-link"><i class="ti ti-wand"></i><span>Filters</span></a>
+      <a href="../crop/index.html" class="nav-link"><i class="ti ti-crop"></i><span>Crop</span></a>
+      <a href="../save/index.html" class="nav-link"><i class="ti ti-download"></i><span>Save</span></a>
+    </nav>
+  </div>
+
+  <script src="../editor.js"></script>
+  <script>
+    const state = getEditorState();
+    const previewImg = document.getElementById('previewImg');
+    const bSlider = document.getElementById('sliderBrightness');
+    const cSlider = document.getElementById('sliderContrast');
+    const sSlider = document.getElementById('sliderSaturation');
+    const eSlider = document.getElementById('sliderExposure');
+
+    const bVal = document.getElementById('valBrightness');
+    const cVal = document.getElementById('valContrast');
+    const sVal = document.getElementById('valSaturation');
+    const eVal = document.getElementById('valExposure');
+
+    function syncUI() {
+      bSlider.value = state.brightness;
+      cSlider.value = state.contrast;
+      sSlider.value = state.saturation;
+      eSlider.value = state.exposure;
+
+      bVal.textContent = state.brightness > 0 ? `+${state.brightness}` : state.brightness;
+      cVal.textContent = state.contrast > 0 ? `+${state.contrast}` : state.contrast;
+      sVal.textContent = state.saturation > 0 ? `+${state.saturation}` : state.saturation;
+      eVal.textContent = state.exposure > 0 ? `+${state.exposure}` : state.exposure;
+
+      applyPreviewStyles(previewImg, state);
+    }
+
+    bSlider.addEventListener('input', (e) => {
+      state.brightness = parseInt(e.target.value);
+      bVal.textContent = state.brightness > 0 ? `+${state.brightness}` : state.brightness;
+      applyPreviewStyles(previewImg, state);
+      saveEditorState(state);
+    });
+
+    cSlider.addEventListener('input', (e) => {
+      state.contrast = parseInt(e.target.value);
+      cVal.textContent = state.contrast > 0 ? `+${state.contrast}` : state.contrast;
+      applyPreviewStyles(previewImg, state);
+      saveEditorState(state);
+    });
+
+    sSlider.addEventListener('input', (e) => {
+      state.saturation = parseInt(e.target.value);
+      sVal.textContent = state.saturation > 0 ? `+${state.saturation}` : state.saturation;
+      applyPreviewStyles(previewImg, state);
+      saveEditorState(state);
+    });
+
+    eSlider.addEventListener('input', (e) => {
+      state.exposure = parseInt(e.target.value);
+      eVal.textContent = state.exposure > 0 ? `+${state.exposure}` : state.exposure;
+      applyPreviewStyles(previewImg, state);
+      saveEditorState(state);
+    });
+
+    document.getElementById('btnReset').addEventListener('click', () => {
+      state.brightness = 0;
+      state.contrast = 0;
+      state.saturation = 0;
+      state.exposure = 0;
+      saveEditorState(state);
+      syncUI();
+    });
+
+    syncUI();
+  </script>
+</body>
+</html>

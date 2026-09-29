@@ -1,0 +1,48 @@
+<div class="mobile-viewport-container">
+  <div class="mobile-frame">
+    <!-- Top Bar with Close, Undo, Redo, Done -->
+    <app-editor-header nextRoute="/feature/crop"></app-editor-header>
+
+    <!-- Photo Preview Area -->
+    <main class="editor-content">
+      <div class="preview-stage">
+        <div class="image-wrapper" [style.filter]="filterCss">
+          <img 
+            [src]="state.imageUrl" 
+            alt="Filter preview" 
+            class="target-image"
+            [style.transform]="'rotate(' + state.rotation + 'deg) scaleX(' + (state.flipH ? -1 : 1) + ') scaleY(' + (state.flipV ? -1 : 1) + ')'" 
+          />
+        </div>
+      </div>
+
+      <!-- Filters Selection Panel -->
+      <section class="controls-panel">
+        <div class="section-meta">
+          <span class="panel-title">Filters</span>
+          <span class="active-badge">{{ state.filter | uppercase }}</span>
+        </div>
+
+        <div class="filters-scroll">
+          <div 
+            *ngFor="let preset of filterPresets" 
+            class="filter-card"
+            [class.active]="state.filter === preset.id"
+            (click)="selectFilter(preset.id)"
+          >
+            <div class="filter-thumb-box" [style.filter]="preset.cssStyle">
+              <img [src]="state.imageUrl" alt="{{ preset.name }} preview" class="thumb-img" />
+              <div class="overlay-check" *ngIf="state.filter === preset.id">
+                <i class="ti ti-check"></i>
+              </div>
+            </div>
+            <span class="filter-name">{{ preset.name }}</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation: Filters active -->
+    <app-editor-bottom-bar activeTab="filters"></app-editor-bottom-bar>
+  </div>
+</div>
