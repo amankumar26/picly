@@ -12,8 +12,9 @@ services:
         value: 20
 
   # Frontend Angular / Ionic Static Site
-  - type: static
+  - type: web
     name: picly-frontend
+    runtime: static
     rootDir: frontend/blank
     buildCommand: npm install && npm run build
     staticPublishPath: www
