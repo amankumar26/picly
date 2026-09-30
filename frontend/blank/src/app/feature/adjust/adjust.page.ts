@@ -1,4 +1,4 @@
-﻿import {
+import {
   Component,
   OnInit,
   OnDestroy,
@@ -100,6 +100,8 @@ const PRESET_EMBERS = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/200
   styleUrls: ['./adjust.page.scss']
 })
 export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
+  @ViewChild('photoArtboard', { static: false }) photoArtboard!: ElementRef<HTMLDivElement>;
+  @ViewChild('canvasViewport', { static: false }) canvasViewport!: ElementRef<HTMLElement>;
   @ViewChild('previewStage', { static: false }) previewStage!: ElementRef<HTMLDivElement>;
   @ViewChild('targetImg', { static: false }) targetImg!: ElementRef<HTMLImageElement>;
   @ViewChild('brushCanvas', { static: false }) brushCanvas!: ElementRef<HTMLCanvasElement>;
@@ -111,6 +113,21 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
   public filterCss: string = '';
   public isComparing = false;
   private sub = new Subscription();
+
+  // Canvas Viewport, Zoom & Pan State
+  public canvasZoom = 1.0; // 0.5x to 5.0x
+  public canvasPan = { x: 0, y: 0 };
+  public isViewportPanning = false;
+  public isZoomHovered = false;
+  public artboardDimensions = { width: 0, height: 0 };
+  public photoAspectRatio = 1;
+  private panStartPointer = { x: 0, y: 0 };
+  private panStartPan = { x: 0, y: 0 };
+  private activePointers = new Map<number, { x: number; y: number }>();
+  private initialTouchDistance = 0;
+  private initialTouchZoom = 1.0;
+  private initialTouchMidpoint = { x: 0, y: 0 };
+  private initialTouchPan = { x: 0, y: 0 };
 
   // Navigation & Tool State
   public activeMainTab: 'styles' | 'tools' | 'export' = 'tools';
@@ -506,6 +523,17 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
         }
       })
     );
+  }
+
+  ngAfterViewInit() {
+    setTimeout(() => {
+      this.recalculateImageBounds();
+      this.initCropBoxForCurrentBounds();
+    }, 80);
+  }
+
+  ngOnDestroy() {
+    this.sub.unsubscribe();
   }
 
   // Layer Getters & Helpers
@@ -1049,8 +1077,9 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     this.dragStartPointer = { x: event.clientX, y: event.clientY };
     this.dragStartScale = layer.scale || 1.0;
 
-    if (this.previewStage?.nativeElement) {
-      const stageRect = this.previewStage.nativeElement.getBoundingClientRect();
+    const artboard = this.photoArtboard?.nativeElement || this.previewStage?.nativeElement;
+    if (artboard) {
+      const stageRect = artboard.getBoundingClientRect();
       this.dragLayerCenterScreen = {
         x: stageRect.left + ((layer.x ?? 50) / 100) * stageRect.width,
         y: stageRect.top + ((layer.y ?? 50) / 100) * stageRect.height
@@ -1071,8 +1100,9 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     this.dragLayerTarget = layer;
     this.dragStartRotation = layer.rotation || 0;
 
-    if (this.previewStage?.nativeElement) {
-      const stageRect = this.previewStage.nativeElement.getBoundingClientRect();
+    const artboard = this.photoArtboard?.nativeElement || this.previewStage?.nativeElement;
+    if (artboard) {
+      const stageRect = artboard.getBoundingClientRect();
       this.dragLayerCenterScreen = {
         x: stageRect.left + ((layer.x ?? 50) / 100) * stageRect.width,
         y: stageRect.top + ((layer.y ?? 50) / 100) * stageRect.height
@@ -1101,8 +1131,9 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     this.dragStartPointer = { x: event.clientX, y: event.clientY };
     this.dragStartLayerPos = { x: layer.x ?? 50, y: layer.y ?? 50 };
 
-    if (this.previewStage?.nativeElement) {
-      const stageRect = this.previewStage.nativeElement.getBoundingClientRect();
+    const artboard = this.photoArtboard?.nativeElement || this.previewStage?.nativeElement;
+    if (artboard) {
+      const stageRect = artboard.getBoundingClientRect();
       this.dragLayerCenterScreen = {
         x: stageRect.left + ((layer.x ?? 50) / 100) * stageRect.width,
         y: stageRect.top + ((layer.y ?? 50) / 100) * stageRect.height
@@ -1227,16 +1258,16 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     this.overlayRotation = layer.rotation || 0;
   }
 
-  ngAfterViewInit() {
-    setTimeout(() => {
-      this.recalculateImageBounds();
-      this.initCropBoxForCurrentBounds();
-    }, 150);
-  }
 
-  ngOnDestroy() {
-    this.sub.unsubscribe();
-  }
+
+
+
+
+
+
+
+
+
 
   get canUndo$() {
     return this.photoState.canUndo$;
@@ -1788,18 +1819,18 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
   // ==============================================================
   // 7. SELECTIVE LOGIC
   // ==============================================================
-  onImageTap(event: MouseEvent | TouchEvent) {
-    if (this.activeToolMode !== 'selective' || !this.previewStage) return;
-    const stage = this.previewStage.nativeElement;
-    const rect = stage.getBoundingClientRect();
-    const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
-    const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
 
-    const x = Math.round(((clientX - rect.left) / rect.width) * 100);
-    const y = Math.round(((clientY - rect.top) / rect.height) * 100);
 
-    this.selectivePoint = { x: Math.max(10, Math.min(90, x)), y: Math.max(10, Math.min(90, y)) };
-  }
+
+
+
+
+
+
+
+
+
+
 
   applySelective() {
     if (this.preEditSnapshot) {
@@ -1822,13 +1853,21 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
   // 8. BRUSH LOGIC (Interactive Painting + Transform + Blend + Presets)
   // ==============================================================
   private initBrushCanvas() {
-    if (!this.brushCanvas?.nativeElement || !this.previewStage?.nativeElement) return;
+    if (!this.brushCanvas?.nativeElement) return;
     const cvs = this.brushCanvas.nativeElement;
-    const rect = this.previewStage.nativeElement.getBoundingClientRect();
-    if (cvs.width !== rect.width || cvs.height !== rect.height) {
-      cvs.width = rect.width;
-      cvs.height = rect.height;
+    const artboard = this.photoArtboard?.nativeElement || this.previewStage?.nativeElement;
+    const rect = artboard?.getBoundingClientRect();
+    const targetW = this.artboardDimensions.width || (rect ? Math.round(rect.width) : 800);
+    const targetH = this.artboardDimensions.height || (rect ? Math.round(rect.height) : 600);
+    if (cvs.width !== targetW || cvs.height !== targetH) {
+      cvs.width = targetW;
+      cvs.height = targetH;
     }
+
+
+
+
+
   }
 
   onBrushPointerDown(event: PointerEvent) {
@@ -2606,26 +2645,222 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     this.photoState.setFilter(preset.id);
   }
 
+  // ==============================================================
+  // 12. FLUID ZOOM & PAN ENGINE
+  // ==============================================================
+  onCanvasWheel(event: WheelEvent) {
+    event.preventDefault();
+    const zoomFactor = event.deltaY < 0 ? 1.14 : 0.88;
+    const oldZoom = this.canvasZoom;
+    const newZoom = Math.max(0.5, Math.min(5.0, +(oldZoom * zoomFactor).toFixed(3)));
+    if (newZoom === oldZoom) return;
+
+    if (this.canvasViewport?.nativeElement) {
+      const rect = this.canvasViewport.nativeElement.getBoundingClientRect();
+      const mouseX = event.clientX - (rect.left + rect.width / 2);
+      const mouseY = event.clientY - (rect.top + rect.height / 2);
+      const scaleRatio = newZoom / oldZoom;
+      this.canvasPan = {
+        x: Math.round(mouseX - (mouseX - this.canvasPan.x) * scaleRatio),
+        y: Math.round(mouseY - (mouseY - this.canvasPan.y) * scaleRatio)
+      };
+    }
+    this.canvasZoom = newZoom;
+  }
+
+  stepZoom(delta: number) {
+    const newZoom = Math.max(0.5, Math.min(5.0, +(this.canvasZoom + delta).toFixed(2)));
+    if (Math.abs(newZoom - 1.0) < 0.08 && Math.abs(delta) < 0.3) {
+      this.resetZoomAndPan();
+      return;
+    }
+    this.canvasZoom = newZoom;
+  }
+
+  resetZoomAndPan() {
+    this.canvasZoom = 1.0;
+    this.canvasPan = { x: 0, y: 0 };
+    this.showToast('Reset zoom (100% Fit)');
+  }
+
+  onViewportDoubleClick(event: MouseEvent) {
+    if (this.activeDragMode !== 'none' || this.isDragging || this.isBrushing || this.isOverlayBrushing) return;
+    if (this.canvasZoom > 1.15) {
+      this.resetZoomAndPan();
+    } else {
+      if (this.canvasViewport?.nativeElement) {
+        const rect = this.canvasViewport.nativeElement.getBoundingClientRect();
+        const clickX = event.clientX - (rect.left + rect.width / 2);
+        const clickY = event.clientY - (rect.top + rect.height / 2);
+        this.canvasZoom = 2.0;
+        this.canvasPan = {
+          x: Math.round(-clickX),
+          y: Math.round(-clickY)
+        };
+        this.showToast('200% Zoom (Double tap to reset)');
+      }
+    }
+  }
+
+  onViewportPointerDown(event: PointerEvent) {
+    this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (this.activePointers.size === 2) {
+      this.isViewportPanning = false;
+      const pts = Array.from(this.activePointers.values());
+      this.initialTouchDistance = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      this.initialTouchZoom = this.canvasZoom;
+      this.initialTouchMidpoint = {
+        x: (pts[0].x + pts[1].x) / 2,
+        y: (pts[0].y + pts[1].y) / 2
+      };
+      this.initialTouchPan = { ...this.canvasPan };
+      return;
+    }
+
+    if (this.activePointers.size === 1) {
+      const target = event.target as HTMLElement;
+      const isInteractiveChild = target.closest('.interactive-canvas-layer') ||
+                                 target.closest('.interactive-crop-box') ||
+                                 target.closest('.selective-focal-pin') ||
+                                 target.closest('.overlay-layer-mask-canvas') ||
+                                 target.closest('.interactive-brush-canvas') ||
+                                 target.closest('.canvas-zoom-pill');
+
+      if (!isInteractiveChild && (this.canvasZoom > 1.05 || event.button === 1 || this.activeToolMode === 'none')) {
+        this.isViewportPanning = true;
+        this.panStartPointer = { x: event.clientX, y: event.clientY };
+        this.panStartPan = { ...this.canvasPan };
+        try {
+          (event.target as HTMLElement)?.setPointerCapture?.(event.pointerId);
+        } catch {}
+      }
+    }
+  }
+
+  onViewportPointerMove(event: PointerEvent) {
+    if (this.activePointers.has(event.pointerId)) {
+      this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+
+    if (this.activePointers.size >= 2 && this.initialTouchDistance > 0) {
+      const pts = Array.from(this.activePointers.values());
+      const currentDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const ratio = currentDist / Math.max(10, this.initialTouchDistance);
+      const newZoom = Math.max(0.5, Math.min(5.0, +(this.initialTouchZoom * ratio).toFixed(3)));
+      this.canvasZoom = newZoom;
+
+      const currentMid = {
+        x: (pts[0].x + pts[1].x) / 2,
+        y: (pts[0].y + pts[1].y) / 2
+      };
+      this.canvasPan = {
+        x: Math.round(this.initialTouchPan.x + (currentMid.x - this.initialTouchMidpoint.x)),
+        y: Math.round(this.initialTouchPan.y + (currentMid.y - this.initialTouchMidpoint.y))
+      };
+      return;
+    }
+
+    if (this.isViewportPanning) {
+      const dx = event.clientX - this.panStartPointer.x;
+      const dy = event.clientY - this.panStartPointer.y;
+      this.canvasPan = {
+        x: Math.round(this.panStartPan.x + dx),
+        y: Math.round(this.panStartPan.y + dy)
+      };
+    }
+  }
+
+  onViewportPointerUp(event: PointerEvent) {
+    this.activePointers.delete(event.pointerId);
+    if (this.activePointers.size < 2) {
+      this.initialTouchDistance = 0;
+    }
+    if (this.isViewportPanning) {
+      this.isViewportPanning = false;
+      try {
+        (event.target as HTMLElement)?.releasePointerCapture?.(event.pointerId);
+      } catch {}
+    }
+  }
+
+  onImageTap(event: MouseEvent) {
+    if (this.activeToolMode !== 'selective') return;
+    const artboard = this.photoArtboard?.nativeElement || this.previewStage?.nativeElement;
+    if (!artboard) return;
+    const rect = artboard.getBoundingClientRect();
+    const x = Math.round(((event.clientX - rect.left) / rect.width) * 100);
+    const y = Math.round(((event.clientY - rect.top) / rect.height) * 100);
+    this.selectivePoint = { x: Math.max(5, Math.min(95, x)), y: Math.max(5, Math.min(95, y)) };
+  }
+
   // Bounds & Layout
   onImageLoaded() {
+    if (this.targetImg?.nativeElement) {
+      const img = this.targetImg.nativeElement;
+      if (img.naturalWidth && img.naturalHeight) {
+        this.photoAspectRatio = img.naturalWidth / img.naturalHeight;
+      }
+    }
     this.recalculateImageBounds();
     this.initCropBoxForCurrentBounds();
   }
 
-  private recalculateImageBounds() {
-    if (!this.targetImg?.nativeElement || !this.previewStage?.nativeElement) return;
-    const img = this.targetImg.nativeElement;
-    const stage = this.previewStage.nativeElement;
+  public recalculateImageBounds() {
+    if (!this.canvasViewport?.nativeElement) return;
+    const vp = this.canvasViewport.nativeElement;
+    const vpW = Math.max(80, vp.clientWidth - 32);
+    const vpH = Math.max(80, vp.clientHeight - 32);
 
-    const imgRect = img.getBoundingClientRect();
-    const stageRect = stage.getBoundingClientRect();
+    let ratio = this.photoAspectRatio;
+    if (!ratio || isNaN(ratio)) {
+      if (this.targetImg?.nativeElement?.naturalWidth && this.targetImg?.nativeElement?.naturalHeight) {
+        ratio = this.targetImg.nativeElement.naturalWidth / this.targetImg.nativeElement.naturalHeight;
+      } else {
+        ratio = 4 / 3;
+      }
+    }
+
+    let artW = vpW;
+    let artH = vpW / ratio;
+
+    if (artH > vpH) {
+      artH = vpH;
+      artW = vpH * ratio;
+    }
+
+    this.artboardDimensions = {
+      width: Math.round(artW),
+      height: Math.round(artH)
+    };
 
     this.currentImgBounds = {
-      x: Math.max(0, imgRect.left - stageRect.left),
-      y: Math.max(0, imgRect.top - stageRect.top),
-      width: Math.max(40, imgRect.width),
-      height: Math.max(40, imgRect.height)
+      x: 0,
+      y: 0,
+      width: this.artboardDimensions.width,
+      height: this.artboardDimensions.height
     };
+
+    if (this.brushCanvas?.nativeElement) {
+      const cvs = this.brushCanvas.nativeElement;
+      if (cvs.width !== this.artboardDimensions.width || cvs.height !== this.artboardDimensions.height) {
+        cvs.width = this.artboardDimensions.width;
+        cvs.height = this.artboardDimensions.height;
+      }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
   }
 
   private initCropBoxForCurrentBounds() {
@@ -2675,8 +2910,9 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
         this.dragLayerTarget.rotation = deg;
         this.overlayRotation = deg;
       } else if (this.activeDragMode === 'move') {
-        if (this.previewStage?.nativeElement) {
-          const stageRect = this.previewStage.nativeElement.getBoundingClientRect();
+        const artboard = this.photoArtboard?.nativeElement || this.previewStage?.nativeElement;
+        if (artboard) {
+          const stageRect = artboard.getBoundingClientRect();
           const dx = ((event.clientX - this.dragStartPointer.x) / stageRect.width) * 100;
           const dy = ((event.clientY - this.dragStartPointer.y) / stageRect.height) * 100;
           const newX = Math.max(0, Math.min(100, Math.round(this.dragStartLayerPos.x + dx)));
