@@ -1,5 +1,5 @@
 <div class="mobile-viewport-container">
-  <div class="mobile-frame">
+  <div class="mobile-frame home-responsive-frame">
     <!-- Hidden File & Camera Native Inputs -->
     <input #fileInput type="file" accept="image/*" style="display: none;" (change)="onFileSelected($event)" />
     <input #cameraInput type="file" accept="image/*" capture="environment" style="display: none;"
@@ -11,13 +11,59 @@
       <span>{{ toastMessage }}</span>
     </div>
 
-    <!-- 1. Top Header matching Snapseed screenshot -->
+    <!-- 1. Top Header (Responsive for Mobile & Desktop) -->
     <header class="snapseed-header">
       <div class="header-left">
         <span class="snapseed-logo">picly</span>
+        <span class="desktop-badge">STUDIO</span>
+
+        <!-- Desktop Album Navigation Tabs (Visible on Tablet & Desktop) -->
+        <nav class="desktop-album-nav" *ngIf="!isSelectMode">
+          <button type="button" class="desktop-album-pill" [class.active]="currentAlbum === 'ALL'" (click)="selectAlbum('ALL')">
+            <i class="ti ti-photo"></i>
+            <span>All</span>
+            <span class="album-badge-count">{{ galleryPhotos.length }}</span>
+          </button>
+          <button type="button" class="desktop-album-pill" [class.active]="currentAlbum === 'CAMERA'" (click)="selectAlbum('CAMERA')">
+            <i class="ti ti-camera"></i>
+            <span>Camera</span>
+          </button>
+          <button type="button" class="desktop-album-pill" [class.active]="currentAlbum === 'DOWNLOADS'" (click)="selectAlbum('DOWNLOADS')">
+            <i class="ti ti-download"></i>
+            <span>Downloads</span>
+          </button>
+          <button type="button" class="desktop-album-pill" [class.active]="currentAlbum === 'RECENT'" (click)="selectAlbum('RECENT')">
+            <i class="ti ti-clock"></i>
+            <span>Recent</span>
+          </button>
+        </nav>
       </div>
 
       <div class="header-right">
+        <!-- Desktop Direct Actions (Upload & Camera buttons) -->
+        <div class="desktop-action-group" *ngIf="!isSelectMode">
+          <button type="button" class="desktop-quick-btn desktop-add-btn" (click)="onAddPhotoClick()" title="Upload image from computer">
+            <i class="ti ti-upload"></i>
+            <span>Upload Photo</span>
+          </button>
+          <button type="button" class="desktop-quick-btn desktop-cam-btn" (click)="onCameraClick()" title="Open camera">
+            <i class="ti ti-camera"></i>
+            <span>Camera</span>
+          </button>
+        </div>
+
+        <!-- Desktop View Mode Toggles -->
+        <div class="view-toggle-group desktop-view-group" *ngIf="!isSelectMode">
+          <button type="button" class="view-icon-btn" [class.active]="viewMode === 'grid'" (click)="viewMode = 'grid'"
+            title="Grid view">
+            <i class="ti ti-layout-grid"></i>
+          </button>
+          <button type="button" class="view-icon-btn" [class.active]="viewMode === 'list'" (click)="viewMode = 'list'"
+            title="List view">
+            <i class="ti ti-menu-2"></i>
+          </button>
+        </div>
+
         <!-- SELECT / CANCEL & MORE Pill Button -->
         <div class="select-pill-group">
           <!-- Select All / Deselect All Toggle in Select Mode -->
@@ -68,11 +114,11 @@
       </div>
     </div>
 
-    <!-- 2. Sub-header Controls Bar (ALL ▾ and View Mode Toggles OR Select Stats) -->
+    <!-- 2. Sub-header Controls Bar (Mobile album dropdown & stats bar) -->
     <div class="controls-bar" [class.in-select-mode]="isSelectMode">
       <ng-container *ngIf="!isSelectMode">
-        <!-- Album Filter Dropdown Trigger -->
-        <div class="album-filter-container">
+        <!-- Mobile Album Filter Dropdown Trigger -->
+        <div class="album-filter-container mobile-only-ctrl">
           <button type="button" class="album-filter-btn" (click)="toggleAlbumDropdown()">
             <span class="album-label">{{ currentAlbum }}</span>
             <i class="ti ti-chevron-down album-chevron" [class.rotated]="showAlbumDropdown"></i>
@@ -103,8 +149,18 @@
           </div>
         </div>
 
-        <!-- Grid / List Icons -->
-        <div class="view-toggle-group">
+        <!-- Desktop Album Info Summary -->
+        <div class="desktop-album-summary desktop-only-ctrl">
+          <span class="summary-text">
+            <strong>{{ filteredPhotos.length }}</strong> photo{{ filteredPhotos.length === 1 ? '' : 's' }} in {{ currentAlbum | titlecase }}
+          </span>
+          <span class="desktop-hint-key" *ngIf="!selectedPhoto">
+            <i class="ti ti-info-circle"></i> Drag &amp; drop images anywhere to edit
+          </span>
+        </div>
+
+        <!-- Mobile Grid / List Icons -->
+        <div class="view-toggle-group mobile-only-ctrl">
           <button type="button" class="view-icon-btn" [class.active]="viewMode === 'grid'" (click)="viewMode = 'grid'"
             title="Grid view">
             <i class="ti ti-layout-grid"></i>
@@ -130,13 +186,45 @@
       </ng-container>
     </div>
 
-    <!-- 3. Photo Gallery Grid matching Screenshot -->
-    <main class="gallery-viewport">
+    <!-- 3. Photo Gallery Grid (Responsive Columns: Mobile 3 cols, Tablet 4-5 cols, Desktop 5-7 cols) -->
+    <main 
+      class="gallery-viewport"
+      (dragover)="onDragOver($event)"
+      (dragleave)="onDragLeave($event)"
+      (drop)="onDrop($event)"
+    >
+      <!-- Drag & Drop Dropzone Overlay (Desktop) -->
+      <div class="desktop-dropzone-overlay" *ngIf="isDraggingFile">
+        <div class="dropzone-card">
+          <i class="ti ti-cloud-upload"></i>
+          <h3>Drop image to edit</h3>
+          <p>Instant studio loading</p>
+        </div>
+      </div>
+
       <div class="gallery-grid" [ngClass]="viewMode">
-        <div *ngFor="let photo of filteredPhotos" class="gallery-item" [class.selected]="selectedPhoto?.id === photo.id"
-          [class.multi-selected]="selectedPhotoIds.has(photo.id)" (click)="onPhotoClick(photo)">
+        <div 
+          *ngFor="let photo of filteredPhotos" 
+          class="gallery-item" 
+          [class.selected]="selectedPhoto?.id === photo.id"
+          [class.multi-selected]="selectedPhotoIds.has(photo.id)" 
+          (click)="onPhotoClick(photo)"
+        >
           <div class="photo-card-wrapper">
-            <img [src]="photo.imageUrl" [alt]="photo.title" class="gallery-thumbnail" loading="lazy" />
+            <img [src]="photo.imageUrl" crossorigin="anonymous" [alt]="photo.title" class="gallery-thumbnail" loading="lazy" />
+
+            <!-- Desktop Hover Overlay with Instant Edit Button -->
+            <div class="desktop-card-hover-overlay" *ngIf="!isSelectMode">
+              <button 
+                type="button" 
+                class="hover-edit-pill" 
+                (click)="$event.stopPropagation(); selectedPhoto = photo; openEditorWithSelected()"
+                title="Edit this photo"
+              >
+                <i class="ti ti-adjustments-horizontal"></i>
+                <span>Edit</span>
+              </button>
+            </div>
 
             <!-- Multi-select checkbox badge -->
             <div class="selection-checkbox" *ngIf="isSelectMode">
@@ -148,6 +236,22 @@
               <span class="edit-badge-indicator">
                 <i class="ti ti-pencil"></i>
               </span>
+            </div>
+
+            <!-- List View Rich Details (shown when in list view) -->
+            <div class="list-meta-panel" *ngIf="viewMode === 'list'">
+              <div class="list-meta-text">
+                <span class="list-title">{{ photo.title }}</span>
+                <span class="list-sub">{{ photo.album | uppercase }} &bull; {{ photo.date || 'Ready to edit' }}</span>
+              </div>
+              <button 
+                type="button" 
+                class="list-edit-action-btn"
+                (click)="$event.stopPropagation(); selectedPhoto = photo; openEditorWithSelected()"
+              >
+                <i class="ti ti-adjustments-horizontal"></i>
+                <span>Edit Photo</span>
+              </button>
             </div>
           </div>
         </div>
@@ -164,7 +268,7 @@
       </div>
     </main>
 
-    <!-- 4. Floating & Bottom Action Bar Architecture -->
+    <!-- 4. Floating & Bottom Action Bar (Responsive Mobile Sheet / Desktop Island) -->
     <footer class="snapseed-footer">
 
       <!-- EDIT OPTION DRAWER (Appears dynamically when user uploads or selects an image) -->
@@ -177,21 +281,23 @@
           </div>
         </div>
         <div class="banner-actions">
-          <button type="button" class="btn-delete-single" (click)="deleteSinglePhoto(selectedPhoto)" title="Delete photo">
+          <button type="button" class="btn-delete-single" (click)="deleteSinglePhoto(selectedPhoto)" title="Delete photo (Delete)">
             <i class="ti ti-trash"></i>
+            <span class="btn-action-label">Delete</span>
           </button>
-          <button type="button" class="btn-cancel-selection" (click)="clearSelection()" title="Deselect">
+          <button type="button" class="btn-cancel-selection" (click)="clearSelection()" title="Deselect (Esc)">
             <i class="ti ti-x"></i>
+            <span class="btn-action-label">Deselect</span>
           </button>
-          <button type="button" class="btn-primary-edit" (click)="openEditorWithSelected()">
+          <button type="button" class="btn-primary-edit" (click)="openEditorWithSelected()" title="Edit Photo (Enter)">
             <i class="ti ti-adjustments-horizontal"></i>
-            <span>EDIT</span>
+            <span>EDIT PHOTO</span>
           </button>
         </div>
       </div>
 
-      <!-- Floating Camera Pill Button matching screenshot exactly -->
-      <div class="camera-pill-container" *ngIf="!selectedPhoto && !isSelectMode">
+      <!-- Floating Camera Pill Button (Mobile layout) -->
+      <div class="camera-pill-container mobile-only-ctrl" *ngIf="!selectedPhoto && !isSelectMode">
         <button type="button" class="camera-pill-btn" (click)="onCameraClick()">
           <span class="camera-lens-ring">
             <i class="ti ti-aperture"></i>
@@ -200,7 +306,7 @@
         </button>
       </div>
 
-      <!-- Full-Width Bottom Buttons -->
+      <!-- Bottom Buttons (Mobile & Desktop Multi-Select) -->
       <div class="bottom-button-container">
         <!-- If in multi-select mode: show both DELETE and EDIT actions side by side -->
         <div class="select-mode-actions-row" *ngIf="isSelectMode">
@@ -225,15 +331,8 @@
           </button>
         </div>
 
-        <!-- If an image was just uploaded / selected -->
-        <button *ngIf="!isSelectMode && selectedPhoto" type="button" class="snapseed-green-btn"
-          (click)="openEditorWithSelected()">
-          <i class="ti ti-adjustments-horizontal"></i>
-          <span>EDIT PHOTO</span>
-        </button>
-
-        <!-- Default Add Photo button -->
-        <button *ngIf="!isSelectMode && !selectedPhoto" type="button" class="snapseed-green-btn"
+        <!-- Mobile only default Add Photo button (on desktop, header button is already available) -->
+        <button *ngIf="!isSelectMode && !selectedPhoto" type="button" class="snapseed-green-btn mobile-only-ctrl"
           (click)="onAddPhotoClick()">
           <i class="ti ti-plus"></i>
           <span>ADD PHOTO</span>

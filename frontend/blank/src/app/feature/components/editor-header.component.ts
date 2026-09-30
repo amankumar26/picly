@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core';
+import { Component, Input, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { PhotoStateService } from '../photo-state.service';
@@ -9,9 +9,15 @@ import { PhotoStateService } from '../photo-state.service';
   imports: [CommonModule],
   template: `
     <header class="editor-header">
-      <button class="icon-btn" (click)="onClose()" title="Close editor" aria-label="Close editor">
+      <button class="icon-btn close-btn" (click)="onClose()" title="Close editor (Esc)" aria-label="Close editor">
         <i class="ti ti-x"></i>
+        <span class="desktop-text">Exit</span>
       </button>
+
+      <div class="header-center-info">
+        <span class="desktop-badge">STUDIO</span>
+        <span class="desktop-title">{{ (photoState.state$ | async)?.title || 'Photo' }}</span>
+      </div>
 
       <div class="history-actions">
         <button 
@@ -19,7 +25,7 @@ import { PhotoStateService } from '../photo-state.service';
           [class.disabled]="!(canUndo$ | async)" 
           [disabled]="!(canUndo$ | async)"
           (click)="onUndo()" 
-          title="Undo"
+          title="Undo (Ctrl+Z)"
           aria-label="Undo">
           <i class="ti ti-arrow-back-up"></i>
         </button>
@@ -28,7 +34,7 @@ import { PhotoStateService } from '../photo-state.service';
           [class.disabled]="!(canRedo$ | async)" 
           [disabled]="!(canRedo$ | async)"
           (click)="onRedo()" 
-          title="Redo"
+          title="Redo (Ctrl+Y)"
           aria-label="Redo">
           <i class="ti ti-arrow-forward-up"></i>
         </button>
@@ -36,6 +42,7 @@ import { PhotoStateService } from '../photo-state.service';
 
       <button class="icon-btn check-btn" (click)="onDone()" title="Save & Export" aria-label="Done">
         <i class="ti ti-check"></i>
+        <span class="desktop-done-text">Done</span>
       </button>
     </header>
   `,
@@ -57,6 +64,15 @@ import { PhotoStateService } from '../photo-state.service';
       border-bottom: 0.5px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     }
 
+    .desktop-text,
+    .desktop-done-text {
+      display: none;
+    }
+
+    .header-center-info {
+      display: none;
+    }
+
     .icon-btn {
       background: transparent;
       border: none;
@@ -67,7 +83,7 @@ import { PhotoStateService } from '../photo-state.service';
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      transition: background-color 0.2s, color 0.2s, opacity 0.2s;
+      transition: background-color 0.2s, color 0.2s, opacity 0.2s, transform 0.15s;
     }
 
     .icon-btn:hover:not(:disabled) {
@@ -101,10 +117,63 @@ import { PhotoStateService } from '../photo-state.service';
       border-radius: 50%;
       padding: 6px;
       box-shadow: 0 2px 10px rgba(255, 255, 255, 0.3);
+      font-weight: 700;
     }
 
     .check-btn i {
       font-size: 18px;
+    }
+
+    @media (min-width: 768px) {
+      .editor-header {
+        padding: 14px 32px 14px;
+      }
+
+      .desktop-text,
+      .desktop-done-text {
+        display: inline;
+        font-size: 13px;
+        font-weight: 600;
+        margin-left: 6px;
+      }
+
+      .close-btn {
+        padding: 6px 14px;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      .header-center-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .desktop-badge {
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 1.5px;
+        color: #38bdf8;
+        background: rgba(56, 189, 248, 0.12);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+        padding: 2px 7px;
+        border-radius: 4px;
+      }
+
+      .desktop-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #ffffff;
+        max-width: 240px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .check-btn {
+        border-radius: 9999px;
+        padding: 7px 18px;
+      }
     }
   `]
 })
@@ -117,8 +186,15 @@ export class EditorHeaderComponent {
 
   constructor(
     private router: Router,
-    private photoState: PhotoStateService
+    public photoState: PhotoStateService
   ) {}
+
+  @HostListener('window:keydown', ['$event'])
+  handleKeyboard(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      this.onClose();
+    }
+  }
 
   onClose() {
     this.router.navigate(['/home']);

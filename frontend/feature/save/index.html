@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -130,12 +130,10 @@
               text: 'Edited with Photo Editor',
               files: [new File([blob], 'edit.jpg', { type: chosenFormat })]
             });
-          } else {
-            document.getElementById('btnDownload').click();
           }
         }, chosenFormat);
       } catch (e) {
-        document.getElementById('btnDownload').click();
+        console.log('Share dismissed or unsupported', e);
       }
     });
 

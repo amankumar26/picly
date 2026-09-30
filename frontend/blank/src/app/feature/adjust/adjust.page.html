@@ -1,8 +1,9 @@
-<div class="mobile-viewport-container">
+﻿<div class="mobile-viewport-container">
   <div class="mobile-frame">
     <!-- Hidden Inputs -->
     <input 
       #overlayFileInput 
+      id="overlayFileInput"
       type="file" 
       accept="image/*" 
       style="display: none;" 
@@ -10,17 +11,26 @@
     />
     <input 
       #addLayerFileInput 
+      id="addLayerFileInput"
       type="file" 
       accept="image/*" 
       style="display: none;" 
       (change)="onAddLayerFileSelected($event)" 
     />
 
-    <!-- 1. Top Bar matching Snapseed screenshot -->
+    <!-- 1. Top Bar matching Snapseed screenshot & desktop studio layout -->
     <header class="top-nav-bar" *ngIf="activeToolMode === 'none'">
-      <button class="nav-icon-btn" (click)="goBackHome()" title="Back to Home" aria-label="Back">
-        <i class="ti ti-arrow-left"></i>
-      </button>
+      <div class="top-left-group">
+        <button class="nav-icon-btn back-btn" (click)="goBackHome()" title="Back to Library (Esc)" aria-label="Back">
+          <i class="ti ti-arrow-left"></i>
+          <span class="desktop-back-label">Library</span>
+        </button>
+
+        <div class="desktop-header-meta">
+          <span class="desktop-editor-badge">STUDIO</span>
+          <span class="desktop-photo-title" [title]="state.title || 'Photo'">{{ state.title || 'Picly Photo' }}</span>
+        </div>
+      </div>
 
       <div class="top-right-group">
         <button 
@@ -28,10 +38,21 @@
           [class.disabled]="!(canUndo$ | async)" 
           [disabled]="!(canUndo$ | async)"
           (click)="onUndo()" 
-          title="Undo"
+          title="Undo (Ctrl+Z)"
           aria-label="Undo"
         >
           <i class="ti ti-arrow-back-up"></i>
+        </button>
+
+        <button 
+          class="nav-icon-btn" 
+          [class.disabled]="!(canRedo$ | async)" 
+          [disabled]="!(canRedo$ | async)"
+          (click)="onRedo()" 
+          title="Redo (Ctrl+Y)"
+          aria-label="Redo"
+        >
+          <i class="ti ti-arrow-forward-up"></i>
         </button>
 
         <button 
@@ -42,18 +63,8 @@
           aria-label="Layers"
         >
           <i class="ti ti-stack-2"></i>
+          <span class="layers-btn-label">Layers</span>
           <span class="layers-count-badge" *ngIf="layers.length > 1">{{ layers.length }}</span>
-        </button>
-
-        <button 
-          class="nav-icon-btn" 
-          [class.disabled]="!(canRedo$ | async)" 
-          [disabled]="!(canRedo$ | async)"
-          (click)="onRedo()" 
-          title="Redo"
-          aria-label="Redo"
-        >
-          <i class="ti ti-arrow-forward-up"></i>
         </button>
 
         <!-- Compare Button: Hold or click to view original -->
@@ -67,9 +78,21 @@
           aria-label="Compare"
         >
           <i class="ti ti-square-half"></i>
+          <span class="desktop-compare-label">Compare</span>
         </button>
 
-        <button class="nav-icon-btn" (click)="toggleMoreMenu()" title="More" aria-label="More">
+        <!-- Desktop Direct Export Button -->
+        <button 
+          type="button" 
+          class="desktop-export-nav-btn" 
+          (click)="showExportSheet = true"
+          title="Export Photo"
+        >
+          <i class="ti ti-download"></i>
+          <span>Export</span>
+        </button>
+
+        <button class="nav-icon-btn" (click)="toggleMoreMenu()" title="More Options" aria-label="More">
           <i class="ti ti-dots-vertical"></i>
         </button>
       </div>
@@ -106,6 +129,7 @@
         >
           <img 
             #targetImg
+            crossorigin="anonymous"
             [src]="isComparing ? (state.originalImageUrl || state.imageUrl) : (baseLayer?.imageUrl || state.imageUrl)" 
             alt="Preview" 
             class="target-image"
@@ -129,7 +153,7 @@
             [style.mix-blend-mode]="layer.blendMode"
             (pointerdown)="onCanvasLayerPointerDown($event, layer)"
           >
-            <img [src]="layer.imageUrl" [alt]="layer.name" class="canvas-layer-img" draggable="false" />
+            <img [src]="layer.imageUrl" crossorigin="anonymous" [alt]="layer.name" class="canvas-layer-img" draggable="false" />
 
             <!-- Active Layer Handles & Ring -->
             <ng-container *ngIf="layer.id === selectedLayerId && (activeToolMode === 'overlay' || showLayersPanel)">
@@ -1001,28 +1025,35 @@
           </div>
         </div>
 
+        <!-- Export Quality Slider (for JPG & WEBP) -->
+        <div class="export-quality-selector" *ngIf="selectedFormat !== 'image/png'">
+          <div class="quality-label-row">
+            <span>Compression Quality:</span>
+            <span class="quality-val">{{ exportQuality }}%</span>
+          </div>
+          <input 
+            type="range" 
+            min="40" 
+            max="100" 
+            [(ngModel)]="exportQuality" 
+            class="export-slider" 
+          />
+        </div>
+
         <div class="export-actions-list">
-          <div class="export-action-item" (click)="showToast('Saved to device storage'); showExportSheet = false">
-            <i class="ti ti-device-floppy"></i>
+          <button 
+            type="button" 
+            class="export-action-item action-save-device" 
+            [disabled]="isExporting" 
+            (click)="saveToDeviceAction()"
+          >
+            <i class="ti ti-download" *ngIf="!isExporting"></i>
+            <i class="ti ti-loader-2 spin" *ngIf="isExporting"></i>
             <div class="action-text">
-              <strong>Save</strong>
-              <span>Save with current settings</span>
+              <strong>Save Image to Device</strong>
+              <span>Download high-quality image to your device storage</span>
             </div>
-          </div>
-          <div class="export-action-item" (click)="showToast('Exported photo'); showExportSheet = false">
-            <i class="ti ti-download"></i>
-            <div class="action-text">
-              <strong>Export</strong>
-              <span>Create a copy of your photo</span>
-            </div>
-          </div>
-          <div class="export-action-item" (click)="showToast('Sharing photo...'); showExportSheet = false">
-            <i class="ti ti-share"></i>
-            <div class="action-text">
-              <strong>Share</strong>
-              <span>Share to Instagram, WhatsApp, or other apps</span>
-            </div>
-          </div>
+          </button>
         </div>
       </div>
     </div>
@@ -1238,10 +1269,34 @@
     <!-- MORE MENU DROPDOWN -->
     <div class="more-menu-dropdown" *ngIf="showMoreMenu" (click)="showMoreMenu = false">
       <div class="menu-card" (click)="$event.stopPropagation()">
-        <button class="menu-item" (click)="toggleLayersPanel(); showMoreMenu = false"><i class="ti ti-stack-2"></i><span>Layers Panel</span></button>
-        <button class="menu-item" (click)="startCompare(); showMoreMenu = false"><i class="ti ti-eye"></i><span>Compare Original</span></button>
-        <button class="menu-item" (click)="openTool('customise'); showMoreMenu = false"><i class="ti ti-layout-grid"></i><span>All Tools</span></button>
-        <button class="menu-item" (click)="goBackHome(); showMoreMenu = false"><i class="ti ti-arrow-left"></i><span>Exit Editor</span></button>
+        <button class="menu-item" (click)="showExportSheet = true; showMoreMenu = false">
+          <i class="ti ti-download"></i>
+          <span>Export & Save</span>
+        </button>
+        <button class="menu-item" (click)="saveProjectAction(); showMoreMenu = false">
+          <i class="ti ti-device-floppy"></i>
+          <span>Save as a Project</span>
+        </button>
+        <button class="menu-item" (click)="sharePhotoAction(); showMoreMenu = false">
+          <i class="ti ti-share"></i>
+          <span>Share to App</span>
+        </button>
+        <button class="menu-item" (click)="toggleLayersPanel(); showMoreMenu = false">
+          <i class="ti ti-stack-2"></i>
+          <span>Layers Panel</span>
+        </button>
+        <button class="menu-item" (click)="startCompare(); showMoreMenu = false">
+          <i class="ti ti-eye"></i>
+          <span>Compare Original</span>
+        </button>
+        <button class="menu-item" (click)="openTool('customise'); showMoreMenu = false">
+          <i class="ti ti-layout-grid"></i>
+          <span>All Tools</span>
+        </button>
+        <button class="menu-item" (click)="goBackHome(); showMoreMenu = false">
+          <i class="ti ti-arrow-left"></i>
+          <span>Exit Editor</span>
+        </button>
       </div>
     </div>
   </div>

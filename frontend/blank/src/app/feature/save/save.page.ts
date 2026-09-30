@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+﻿import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -45,20 +45,29 @@ export class SavePage implements OnInit, OnDestroy {
   async downloadImage() {
     this.isExporting = true;
     try {
-      const dataUrl = await this.renderFinalCanvas();
-      const link = document.createElement('a');
+      const { dataUrl, blob } = await this.renderFinalCanvasOutput();
       const ext = this.selectedFormat === 'image/png' ? 'png' : this.selectedFormat === 'image/webp' ? 'webp' : 'jpg';
-      link.download = `photo-edit-${Date.now()}.${ext}`;
-      link.href = dataUrl;
-      link.click();
+      const cleanTitle = (this.state.title || 'photo-edit').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'picly-edit';
+      const filename = `${cleanTitle}-${Date.now()}.${ext}`;
+
+      // 1. Download to device storage
+      this.photoState.downloadBlobOrDataUrl(blob, filename);
+
+      // 2. Automatically save project state in local storage
+      try {
+        const storageUrl = await this.photoState.createStorageOptimizedDataUrl(dataUrl, 1080);
+        this.photoState.saveProject(cleanTitle, {
+          ...this.state,
+          imageUrl: storageUrl
+        });
+      } catch (saveErr) {
+        console.warn('Could not auto-sync project in recents:', saveErr);
+      }
       
       this.exportSuccess = true;
       setTimeout(() => (this.exportSuccess = false), 3500);
-
-      // Save to recent edits list
-      this.photoState.addRecentEdit(`Edit ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, dataUrl, this.state);
     } catch (e) {
-      console.error('Error rendering image:', e);
+      console.error('Error rendering/exporting image:', e);
     } finally {
       this.isExporting = false;
     }
@@ -66,11 +75,12 @@ export class SavePage implements OnInit, OnDestroy {
 
   async shareImage() {
     try {
-      const dataUrl = await this.renderFinalCanvas();
+      const { dataUrl, blob } = await this.renderFinalCanvasOutput();
+      const ext = this.selectedFormat === 'image/png' ? 'png' : this.selectedFormat === 'image/webp' ? 'webp' : 'jpg';
+      const filename = `photo-edit-${Date.now()}.${ext}`;
+
       if (navigator.share) {
-        // Convert to blob for sharing
-        const blob = await (await fetch(dataUrl)).blob();
-        const file = new File([blob], 'photo-edit.jpg', { type: this.selectedFormat });
+        const file = new File([blob], filename, { type: this.selectedFormat });
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({
             title: 'My Edited Photo',
@@ -89,9 +99,7 @@ export class SavePage implements OnInit, OnDestroy {
         dialogTitle: 'Share your photo'
       });
     } catch (e) {
-      // Fallback if user cancels or unavailable
       console.log('Share dismissed or completed', e);
-      this.downloadImage();
     }
   }
 
@@ -99,49 +107,52 @@ export class SavePage implements OnInit, OnDestroy {
     this.router.navigate(['/home']);
   }
 
-  private renderFinalCanvas(): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Canvas context not available'));
-          return;
-        }
+  private async renderFinalCanvasOutput(): Promise<{ dataUrl: string; blob: Blob }> {
+    const img = await this.photoState.loadSafeImage(this.state.imageUrl);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Canvas context not available');
+    }
 
-        let width = img.naturalWidth || 800;
-        let height = img.naturalHeight || 600;
+    let width = img.naturalWidth || img.width || 800;
+    let height = img.naturalHeight || img.height || 600;
 
-        // Apply crop aspect ratio if chosen
-        if (this.state.aspectRatio === '1:1') {
-          const side = Math.min(width, height);
-          width = side;
-          height = side;
-        } else if (this.state.aspectRatio === '4:3') {
-          height = Math.round(width * 3 / 4);
-        } else if (this.state.aspectRatio === '16:9') {
-          height = Math.round(width * 9 / 16);
-        }
+    // Apply crop aspect ratio if chosen
+    if (this.state.aspectRatio === '1:1') {
+      const side = Math.min(width, height);
+      width = side;
+      height = side;
+    } else if (this.state.aspectRatio === '4:3') {
+      height = Math.round(width * 3 / 4);
+    } else if (this.state.aspectRatio === '16:9') {
+      height = Math.round(width * 9 / 16);
+    }
 
-        canvas.width = width;
-        canvas.height = height;
+    canvas.width = width;
+    canvas.height = height;
 
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    if (this.filterCss && this.filterCss.trim() !== '' && this.filterCss !== 'none') {
+      try {
         ctx.filter = this.filterCss;
-        
-        ctx.save();
-        ctx.translate(width / 2, height / 2);
-        ctx.rotate((this.state.rotation * Math.PI) / 180);
-        ctx.scale(this.state.flipH ? -1 : 1, this.state.flipV ? -1 : 1);
-        ctx.drawImage(img, -width / 2, -height / 2, width, height);
-        ctx.restore();
+      } catch {}
+    }
+    
+    ctx.save();
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate((this.state.rotation * Math.PI) / 180);
+    ctx.scale(this.state.flipH ? -1 : 1, this.state.flipV ? -1 : 1);
+    ctx.drawImage(img, -width / 2, -height / 2, width, height);
+    ctx.restore();
 
-        const result = canvas.toDataURL(this.selectedFormat, this.selectedQuality);
-        resolve(result);
-      };
-      img.onerror = reject;
-      img.src = this.state.imageUrl;
-    });
+    return await this.photoState.getCanvasOutput(canvas, this.selectedFormat, this.selectedQuality);
+  }
+
+  private async renderFinalCanvas(): Promise<string> {
+    const { dataUrl } = await this.renderFinalCanvasOutput();
+    return dataUrl;
   }
 }

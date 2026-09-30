@@ -1,10 +1,11 @@
-import {
+﻿import {
   Component,
   OnInit,
   OnDestroy,
   ElementRef,
   ViewChild,
-  AfterViewInit
+  AfterViewInit,
+  HostListener
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -17,6 +18,7 @@ import {
   FilterType,
   AspectRatioType
 } from '../photo-state.service';
+import { Share } from '@capacitor/share';
 
 export interface TuneParamOption {
   id: keyof ImageAdjustments;
@@ -368,6 +370,7 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
   public selectedFormat: 'image/jpeg' | 'image/png' | 'image/webp' = 'image/jpeg';
   public exportQuality = 92;
   public toastMessage = '';
+  public isExporting = false;
 
   // Layers System State
   public selectedLayerId = 'layer-base';
@@ -620,7 +623,11 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
   }
 
   triggerAddLayerFile() {
-    this.addLayerFileInput?.nativeElement?.click();
+    const el = this.addLayerFileInput?.nativeElement || (document.getElementById('addLayerFileInput') as HTMLInputElement);
+    if (el) {
+      el.value = '';
+      el.click();
+    }
   }
 
   onAddLayerFileSelected(event: Event) {
@@ -691,51 +698,270 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     this.showToast('All layers merged down');
   }
 
-  async renderAllLayersToDataUrl(format: string = 'image/jpeg', quality: number = 0.95): Promise<string> {
-    const baseImg = this.targetImg?.nativeElement;
-    const canvas = document.createElement('canvas');
-    canvas.width = baseImg?.naturalWidth || 1200;
-    canvas.height = baseImg?.naturalHeight || 900;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return this.state.imageUrl;
-
-    for (const layer of this.layers) {
-      if (!layer.visible) continue;
-      await new Promise<void>((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-          ctx.save();
-          if (layer.type === 'base') {
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          } else {
-            const cx = ((layer.x ?? 50) / 100) * canvas.width;
-            const cy = ((layer.y ?? 50) / 100) * canvas.height;
-            ctx.translate(cx, cy);
-            ctx.rotate(((layer.rotation || 0) * Math.PI) / 180);
-            const sx = (layer.flipH ? -1 : 1) * (layer.scale || 1);
-            const sy = (layer.flipV ? -1 : 1) * (layer.scale || 1);
-            ctx.scale(sx, sy);
-            ctx.globalAlpha = Math.max(0.05, Math.min(1.0, layer.opacity / 100));
-
-            if (layer.blendMode === 'screen') ctx.globalCompositeOperation = 'screen';
-            else if (layer.blendMode === 'multiply') ctx.globalCompositeOperation = 'multiply';
-            else if (layer.blendMode === 'overlay') ctx.globalCompositeOperation = 'overlay';
-            else if (layer.blendMode === 'soft-light') ctx.globalCompositeOperation = 'soft-light';
-            else if (layer.blendMode === 'color-dodge') ctx.globalCompositeOperation = 'color-dodge';
-            else ctx.globalCompositeOperation = 'source-over';
-
-            const overW = canvas.width * 0.85;
-            const overH = (overW * (img.naturalHeight || 600)) / (img.naturalWidth || 800);
-            ctx.drawImage(img, -overW / 2, -overH / 2, overW, overH);
-          }
-          ctx.restore();
-          resolve();
-        };
-        img.onerror = () => resolve();
-        img.src = layer.imageUrl;
-      });
+  public mapBlendModeToCanvasComposite(mode: string): GlobalCompositeOperation {
+    switch (mode) {
+      case 'screen': return 'screen';
+      case 'multiply': return 'multiply';
+      case 'overlay': return 'overlay';
+      case 'soft-light': return 'soft-light';
+      case 'color-dodge': return 'color-dodge';
+      default: return 'source-over';
     }
-    return canvas.toDataURL(format, quality);
+  }
+
+  private loadImageAsync(src: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Failed to load image: ' + src));
+      img.src = src;
+    });
+  }
+
+  public async renderFinalCanvasOutput(
+    format: string = this.selectedFormat,
+    quality: number = this.exportQuality / 100
+  ): Promise<{ dataUrl: string; blob: Blob }> {
+    const baseSrc = this.baseLayer?.imageUrl || this.state.imageUrl;
+    let baseImg: HTMLImageElement;
+    try {
+      baseImg = await this.photoState.loadSafeImage(baseSrc);
+    } catch (e) {
+      if (this.targetImg?.nativeElement?.complete && this.targetImg.nativeElement.naturalWidth > 0) {
+        baseImg = this.targetImg.nativeElement;
+      } else {
+        throw new Error('Base photo could not be loaded for export');
+      }
+    }
+
+    const naturalW = baseImg.naturalWidth || baseImg.width || 1200;
+    const naturalH = baseImg.naturalHeight || baseImg.height || 900;
+    const rot = ((this.state.rotation || 0) % 360 + 360) % 360;
+    const isRotated90 = rot === 90 || rot === 270;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = isRotated90 ? naturalH : naturalW;
+    canvas.height = isRotated90 ? naturalW : naturalH;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Canvas 2D context not available');
+    }
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    // 1. Draw Base Photo Layer with Filters & Rotation
+    if (!this.baseLayer || this.baseLayer.visible) {
+      ctx.save();
+      const filterParts = [
+        this.filterCss,
+        this.hdrCssFilter,
+        this.wbCssFilter,
+        this.colorGradeCssFilter
+      ].filter(f => f && f.trim() !== '' && f !== 'none');
+
+      if (filterParts.length > 0) {
+        try {
+          ctx.filter = filterParts.join(' ').trim();
+        } catch {}
+      }
+
+      ctx.globalAlpha = Math.max(0, Math.min(1, (this.baseLayer?.opacity ?? 100) / 100));
+      ctx.globalCompositeOperation = this.mapBlendModeToCanvasComposite(this.baseLayer?.blendMode ?? 'normal');
+
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      if (rot !== 0) {
+        ctx.rotate((rot * Math.PI) / 180);
+      }
+      ctx.scale(this.state.flipH ? -1 : 1, this.state.flipV ? -1 : 1);
+      ctx.drawImage(baseImg, -naturalW / 2, -naturalH / 2, naturalW, naturalH);
+      ctx.restore();
+    }
+
+    // 2. Draw Upper Layers (Overlays, Stickers, Added Photos)
+    for (const layer of this.nonBaseLayers) {
+      if (!layer.visible) continue;
+      try {
+        const lImg = await this.photoState.loadSafeImage(layer.imageUrl);
+        ctx.save();
+        const cx = ((layer.x ?? 50) / 100) * canvas.width;
+        const cy = ((layer.y ?? 50) / 100) * canvas.height;
+        ctx.translate(cx, cy);
+        if (layer.rotation) {
+          ctx.rotate(((layer.rotation || 0) * Math.PI) / 180);
+        }
+        const sx = (layer.flipH ? -1 : 1) * (layer.scale || 1);
+        const sy = (layer.flipV ? -1 : 1) * (layer.scale || 1);
+        ctx.scale(sx, sy);
+        ctx.globalAlpha = Math.max(0.01, Math.min(1.0, (layer.opacity ?? 100) / 100));
+        ctx.globalCompositeOperation = this.mapBlendModeToCanvasComposite(layer.blendMode);
+
+        const overW = canvas.width * 0.85;
+        const lNatW = lImg.naturalWidth || lImg.width || 800;
+        const lNatH = lImg.naturalHeight || lImg.height || 600;
+        const overH = (overW * lNatH) / lNatW;
+        ctx.drawImage(lImg, -overW / 2, -overH / 2, overW, overH);
+        ctx.restore();
+      } catch (err) {
+        console.warn('Could not composite layer:', layer.name, err);
+      }
+    }
+
+    // 3. Draw Brush Canvas if painted
+    if (this.brushCanvas?.nativeElement) {
+      ctx.save();
+      ctx.globalAlpha = 1.0;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(this.brushCanvas.nativeElement, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+
+    return await this.photoState.getCanvasOutput(canvas, format, quality);
+  }
+
+  public async renderFinalCanvas(
+    format: string = this.selectedFormat,
+    quality: number = this.exportQuality / 100
+  ): Promise<string> {
+    const { dataUrl } = await this.renderFinalCanvasOutput(format, quality);
+    return dataUrl;
+  }
+
+  async renderAllLayersToDataUrl(format: string = 'image/jpeg', quality: number = 0.95): Promise<string> {
+    return this.renderFinalCanvas(format, quality);
+  }
+
+  async saveToDeviceAction() {
+    if (this.isExporting) return;
+    this.isExporting = true;
+    try {
+      const { dataUrl, blob } = await this.renderFinalCanvasOutput();
+      const ext = this.selectedFormat === 'image/png' ? 'png' : this.selectedFormat === 'image/webp' ? 'webp' : 'jpg';
+      const cleanTitle = (this.state.title || 'picly-photo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'picly-photo';
+      const filename = `${cleanTitle}-${Date.now()}.${ext}`;
+
+      // 1. Download image to user's device storage
+      this.photoState.downloadBlobOrDataUrl(blob, filename);
+
+      // 2. Automatically save project state in local storage
+      try {
+        const storageUrl = await this.photoState.createStorageOptimizedDataUrl(dataUrl, 1080);
+        this.photoState.saveProject(cleanTitle, {
+          ...this.state,
+          imageUrl: storageUrl
+        });
+      } catch (saveErr) {
+        console.warn('Could not auto-sync project to recents:', saveErr);
+      }
+
+      this.showToast(`Saved ${ext.toUpperCase()} to device storage!`);
+      this.showExportSheet = false;
+    } catch (err) {
+      console.error('Save to device failed:', err);
+      this.showToast('Download failed. Please try again.');
+    } finally {
+      this.isExporting = false;
+    }
+  }
+
+  async saveProjectAction() {
+    if (this.isExporting) return;
+    this.isExporting = true;
+    try {
+      const { dataUrl } = await this.renderFinalCanvasOutput();
+      const storageUrl = await this.photoState.createStorageOptimizedDataUrl(dataUrl, 1080);
+      const title = this.state.title || `Project ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+      // 2. Save edit as project in localStorage in-place without creating gallery replicas
+      this.photoState.saveProject(title, {
+        ...this.state,
+        imageUrl: storageUrl
+      });
+
+      // Update current active editor image
+      this.state.imageUrl = dataUrl;
+      if (this.baseLayer) {
+        this.baseLayer.imageUrl = dataUrl;
+      }
+
+      this.showToast('Project edit saved in local storage!');
+      this.showExportSheet = false;
+    } catch (err) {
+      console.error('Save project failed:', err);
+      this.showToast('Save project failed. Please try again.');
+    } finally {
+      this.isExporting = false;
+    }
+  }
+
+  async sharePhotoAction() {
+    if (this.isExporting) return;
+    this.isExporting = true;
+    try {
+      const { dataUrl, blob } = await this.renderFinalCanvasOutput();
+      const ext = this.selectedFormat === 'image/png' ? 'png' : this.selectedFormat === 'image/webp' ? 'webp' : 'jpg';
+      const filename = `picly-photo-${Date.now()}.${ext}`;
+
+      // 3. Share directly through multiple apps (WhatsApp, Instagram, etc.) without gallery replicas
+      if (navigator.share) {
+        try {
+          const file = new File([blob], filename, { type: this.selectedFormat });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              title: this.state.title || 'My Edited Photo',
+              text: 'Check out this photo edited with Picly!',
+              files: [file]
+            });
+            this.showToast('Photo shared successfully!');
+            this.showExportSheet = false;
+            return;
+          }
+        } catch (shareErr: any) {
+          if (shareErr.name === 'AbortError') {
+            this.showExportSheet = false;
+            return;
+          }
+        }
+      }
+
+      // Capacitor Share fallback for native apps
+      try {
+        await Share.share({
+          title: this.state.title || 'My Edited Photo',
+          text: 'Edited with Picly',
+          url: dataUrl,
+          dialogTitle: 'Share to apps'
+        });
+        this.showToast('Shared successfully!');
+        this.showExportSheet = false;
+        return;
+      } catch (capErr: any) {
+        if (capErr?.message?.includes('cancel') || capErr?.message?.includes('dismiss')) {
+          this.showExportSheet = false;
+          return;
+        }
+      }
+
+      // Notice if Web Share is unsupported in desktop browser
+      this.showToast('Share is available on mobile devices & supported browsers');
+      this.showExportSheet = false;
+    } catch (err) {
+      console.error('Share failed:', err);
+      this.showToast('Sharing failed');
+    } finally {
+      this.isExporting = false;
+    }
+  }
+
+  // Aliases for compatibility
+  exportPhotoAction() {
+    return this.saveToDeviceAction();
+  }
+
+  saveToLocalStorageAction() {
+    return this.saveProjectAction();
   }
 
   resetLayerPosition(layer: ImageLayer) {
@@ -1762,19 +1988,67 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
       reader.onload = (e) => {
         const result = e.target?.result as string;
         if (result) {
+          const fileName = file.name.replace(/\.[^/.]+$/, "") || 'Overlay Photo';
           this.overlayImageUrl = result;
           this.activeOverlayPresetId = 'custom';
           this.overlayBlendMode = 'normal';
-          this.overlayOpacity = 90;
-          this.showToast('Custom PNG/Image loaded! Drag or scale to place.');
+          this.overlayOpacity = 100;
+          this.overlayScale = 1.0;
+          this.overlayRotation = 0;
+          this.overlayFlipH = false;
+          this.overlayFlipV = false;
+          this.overlayPos = { x: 50, y: 50 };
+
+          if (this.selectedLayer && this.selectedLayer.type !== 'base') {
+            this.selectedLayer.imageUrl = result;
+            this.selectedLayer.name = fileName;
+            this.selectedLayer.blendMode = 'normal';
+            this.selectedLayer.opacity = 100;
+            this.selectedLayer.visible = true;
+            this.selectedLayer.x = 50;
+            this.selectedLayer.y = 50;
+            this.selectedLayer.scale = 1.0;
+            this.selectedLayer.rotation = 0;
+            this.selectedLayer.flipH = false;
+            this.selectedLayer.flipV = false;
+          } else {
+            const newLayer: ImageLayer = {
+              id: 'layer-' + Date.now(),
+              name: fileName,
+              type: 'overlay',
+              imageUrl: result,
+              visible: true,
+              opacity: 100,
+              blendMode: 'normal',
+              x: 50,
+              y: 50,
+              scale: 1.0,
+              rotation: 0,
+              flipH: false,
+              flipV: false
+            };
+            this.layers.push(newLayer);
+            this.selectedLayerId = newLayer.id;
+          }
+
+          this.layers = [...this.layers];
+          this.overlaySubTab = 'transform';
+          this.showToast(`"${fileName}" uploaded! Drag or scale to position.`);
         }
+        input.value = '';
       };
       reader.readAsDataURL(file);
+    } else {
+      input.value = '';
     }
   }
 
   triggerOverlayUpload() {
-    this.overlayFileInput?.nativeElement?.click();
+    const el = this.overlayFileInput?.nativeElement || (document.getElementById('overlayFileInput') as HTMLInputElement);
+    if (el) {
+      el.value = '';
+      el.click();
+    }
   }
 
   selectOverlayPreset(presetId: string) {
@@ -1784,6 +2058,33 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     this.overlayImageUrl = preset.dataUrl;
     this.overlayBlendMode = preset.recommendedBlend;
     this.overlayOpacity = preset.defaultOpacity;
+
+    if (this.selectedLayer && this.selectedLayer.type !== 'base') {
+      this.selectedLayer.imageUrl = preset.dataUrl;
+      this.selectedLayer.name = preset.name;
+      this.selectedLayer.blendMode = preset.recommendedBlend;
+      this.selectedLayer.opacity = preset.defaultOpacity;
+      this.selectedLayer.visible = true;
+    } else {
+      const newLayer: ImageLayer = {
+        id: 'layer-' + Date.now(),
+        name: preset.name,
+        type: 'overlay',
+        imageUrl: preset.dataUrl,
+        visible: true,
+        opacity: preset.defaultOpacity,
+        blendMode: preset.recommendedBlend,
+        x: 50,
+        y: 50,
+        scale: 1.0,
+        rotation: 0,
+        flipH: false,
+        flipV: false
+      };
+      this.layers.push(newLayer);
+      this.selectedLayerId = newLayer.id;
+    }
+    this.layers = [...this.layers];
     this.showToast(`Applied "${preset.name}" overlay`);
   }
 
@@ -2010,6 +2311,43 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
 
   formatValue(val: number): string {
     return val > 0 ? `+${val}` : `${val}`;
+  }
+
+  @HostListener('window:resize')
+  onWindowResize() {
+    this.recalculateImageBounds();
+  }
+
+  @HostListener('window:keydown', ['$event'])
+  handleKeyboardEvent(event: KeyboardEvent) {
+    if ((event.target as HTMLElement)?.tagName === 'INPUT') return;
+
+    if (event.ctrlKey || event.metaKey) {
+      if (event.key === 'z' || event.key === 'Z') {
+        if (event.shiftKey) {
+          event.preventDefault();
+          this.onRedo();
+        } else {
+          event.preventDefault();
+          this.onUndo();
+        }
+      } else if (event.key === 'y' || event.key === 'Y') {
+        event.preventDefault();
+        this.onRedo();
+      }
+    } else if (event.key === 'Escape') {
+      if (this.showCustomiseSheet) {
+        this.showCustomiseSheet = false;
+      } else if (this.showExportSheet) {
+        this.showExportSheet = false;
+      } else if (this.showLayersPanel) {
+        this.closeLayersPanel();
+      } else if (this.activeToolMode !== 'none') {
+        this.activeToolMode = 'none';
+      } else if (this.showMoreMenu) {
+        this.showMoreMenu = false;
+      }
+    }
   }
 
   public showToast(msg: string) {

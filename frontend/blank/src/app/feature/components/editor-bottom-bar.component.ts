@@ -100,6 +100,29 @@ import { Router } from '@angular/router';
     .nav-item.active i {
       transform: translateY(-1px);
     }
+
+    @media (min-width: 768px) {
+      .editor-bottom-nav {
+        max-width: 520px;
+        margin: 0 auto 12px;
+        border-radius: 9999px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+        background: rgba(14, 14, 18, 0.88);
+        backdrop-filter: blur(28px);
+        -webkit-backdrop-filter: blur(28px);
+        padding: 6px 14px;
+      }
+
+      .nav-item {
+        flex-direction: row;
+        gap: 8px;
+        padding: 8px 18px;
+        border-radius: 9999px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+    }
   `]
 })
 export class EditorBottomBarComponent {

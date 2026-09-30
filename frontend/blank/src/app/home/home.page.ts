@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { PhotoStateService, RecentEdit } from '../feature/photo-state.service';
@@ -32,6 +32,7 @@ export class HomePage implements OnInit {
   public currentAlbum = 'ALL';
   public viewMode: 'grid' | 'list' = 'grid';
   public toastMessage = '';
+  public isDraggingFile = false;
 
   // Gallery Photos matching the Snapseed home grid aesthetic
   public galleryPhotos: GalleryPhoto[] = [];
@@ -42,6 +43,11 @@ export class HomePage implements OnInit {
   ) {}
 
   ngOnInit() {
+    this.initGallery();
+  }
+
+  ionViewWillEnter() {
+    this.photoState.loadPersistedRecents();
     this.initGallery();
   }
 
@@ -132,7 +138,16 @@ export class HomePage implements OnInit {
     ];
 
     const activeCurated = curatedPhotos.filter(p => !deletedIds.has(p.id));
-    const savedUserPhotos = this.getSavedUserPhotos().filter(p => !deletedIds.has(p.id));
+    
+    // Only keep real user-uploaded photos, filtering out any old export replicas (user-gal-)
+    const rawSaved = this.getSavedUserPhotos();
+    const cleanSaved = rawSaved.filter(p => !p.id.startsWith('user-gal-') && !deletedIds.has(p.id));
+    if (cleanSaved.length !== rawSaved.length) {
+      try {
+        localStorage.setItem('pe_user_gallery_photos', JSON.stringify(cleanSaved));
+      } catch {}
+    }
+    const savedUserPhotos = cleanSaved;
 
     // Combine and strictly deduplicate every photo by imageUrl
     const combined: GalleryPhoto[] = [];
@@ -251,8 +266,11 @@ export class HomePage implements OnInit {
           const title = file.name.replace(/\.[^/.]+$/, '');
           this.processNewImage(result, title);
         }
+        input.value = '';
       };
       reader.readAsDataURL(file);
+    } else {
+      input.value = '';
     }
   }
 
@@ -400,6 +418,67 @@ export class HomePage implements OnInit {
     }
 
     this.showToast(`"${photo.title}" deleted`);
+  }
+
+  onDragOver(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDraggingFile = true;
+  }
+
+  onDragLeave(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDraggingFile = false;
+  }
+
+  onDrop(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDraggingFile = false;
+
+    if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+      const file = event.dataTransfer.files[0];
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const result = e.target?.result as string;
+          if (result) {
+            const title = file.name.replace(/\.[^/.]+$/, '');
+            this.processNewImage(result, title);
+            this.openEditorWithSelected();
+          }
+        };
+        reader.readAsDataURL(file);
+      } else {
+        this.showToast('Please drop an image file (JPEG, PNG, WEBP, etc.)');
+      }
+    }
+  }
+
+  @HostListener('window:keydown', ['$event'])
+  handleKeyboardEvent(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      if (this.isSelectMode) {
+        this.toggleSelectMode();
+      } else if (this.selectedPhoto) {
+        this.clearSelection();
+      } else if (this.showMoreMenu) {
+        this.showMoreMenu = false;
+      }
+    } else if (event.key === 'Enter') {
+      if (this.selectedPhoto && !this.isSelectMode) {
+        this.openEditorWithSelected();
+      }
+    } else if (event.key === 'Delete' || event.key === 'Backspace') {
+      // Don't trigger if focus is in an input
+      if ((event.target as HTMLElement)?.tagName === 'INPUT') return;
+      if (this.isSelectMode && this.selectedPhotoIds.size > 0) {
+        this.deleteSelectedPhotos();
+      } else if (this.selectedPhoto && !this.isSelectMode) {
+        this.deleteSinglePhoto(this.selectedPhoto);
+      }
+    }
   }
 
   private showToast(msg: string) {

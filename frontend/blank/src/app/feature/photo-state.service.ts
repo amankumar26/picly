@@ -35,6 +35,7 @@ export interface ImageLayer {
 export interface EditorState {
   imageUrl: string;
   originalImageUrl?: string;
+  title?: string;
   adjustments: ImageAdjustments;
   filter: FilterType;
   aspectRatio: AspectRatioType;
@@ -195,6 +196,7 @@ export class PhotoStateService {
     const newState: EditorState = {
       imageUrl: url,
       originalImageUrl: url,
+      title,
       adjustments: {
         brightness: 0,
         contrast: 0,
@@ -432,15 +434,20 @@ export class PhotoStateService {
     this.persistRecents();
   }
 
-  private persistRecents() {
+  public persistRecents() {
     try {
       localStorage.setItem('pe_recent_edits', JSON.stringify(this.recentEdits));
     } catch {
       // Ignore quota exceeded for very large images
+      try {
+        if (this.recentEdits.length > 4) {
+          localStorage.setItem('pe_recent_edits', JSON.stringify(this.recentEdits.slice(0, 4)));
+        }
+      } catch {}
     }
   }
 
-  private loadPersistedRecents() {
+  public loadPersistedRecents() {
     try {
       const data = localStorage.getItem('pe_recent_edits');
       if (data) {
@@ -452,6 +459,253 @@ export class PhotoStateService {
     } catch {
       // Use defaults
     }
+  }
+
+  public saveToUserGallery(photo: { id?: string; title: string; imageUrl: string; album: 'downloads' | 'recent' | 'camera' }) {
+    try {
+      const raw = localStorage.getItem('pe_user_gallery_photos');
+      const existing = raw ? JSON.parse(raw) : [];
+      const newEntry = {
+        id: photo.id || ('user-gal-' + Date.now()),
+        title: photo.title || 'Edited Photo',
+        imageUrl: photo.imageUrl,
+        date: 'Just now',
+        album: photo.album
+      };
+      // Keep max 25, deduplicate by imageUrl
+      const updated = [newEntry, ...existing.filter((p: any) => p.imageUrl !== photo.imageUrl && p.id !== newEntry.id)].slice(0, 25);
+      try {
+        localStorage.setItem('pe_user_gallery_photos', JSON.stringify(updated));
+      } catch (quotaErr) {
+        // Quota exceeded: trim down to 6 most recent
+        const trimmed = [newEntry, ...existing.slice(0, 5)];
+        localStorage.setItem('pe_user_gallery_photos', JSON.stringify(trimmed));
+      }
+    } catch (e) {
+      console.warn('Error saving to user gallery storage:', e);
+    }
+  }
+
+  public createStorageOptimizedDataUrl(dataUrl: string, maxDim: number = 1000): Promise<string> {
+    return new Promise((resolve) => {
+      if (!dataUrl || !dataUrl.startsWith('data:') || dataUrl.length < 200000) {
+        resolve(dataUrl);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, w);
+        canvas.height = Math.max(1, h);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+
+  public loadSafeImage(src: string): Promise<HTMLImageElement> {
+    return new Promise(async (resolve, reject) => {
+      if (!src) {
+        reject(new Error('No image URL'));
+        return;
+      }
+
+      // If already a data URL or blob URL, load directly
+      if (src.startsWith('data:') || src.startsWith('blob:')) {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = (e) => reject(e);
+        img.src = src;
+        return;
+      }
+
+      // Try fetching as Blob with CORS and convert to persistent Data URL (never tainted, never revoked)
+      try {
+        const separator = src.includes('?') ? '&' : '?';
+        const res = await fetch(`${src}${separator}_cors=${Date.now()}`, { mode: 'cors' });
+        if (res.ok) {
+          const blob = await res.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const dataUrl = reader.result as string;
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => this.fallbackLoadImage(src).then(resolve).catch(reject);
+            img.src = dataUrl;
+          };
+          reader.onerror = () => this.fallbackLoadImage(src).then(resolve).catch(reject);
+          reader.readAsDataURL(blob);
+          return;
+        }
+      } catch (fetchErr) {
+        // Fallback to Image with anonymous
+      }
+
+      this.fallbackLoadImage(src).then(resolve).catch(reject);
+    });
+  }
+
+  private fallbackLoadImage(src: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => {
+        // Last resort: load without anonymous
+        const raw = new Image();
+        raw.onload = () => resolve(raw);
+        raw.onerror = reject;
+        raw.src = src;
+      };
+      img.src = src;
+    });
+  }
+
+  public getCanvasOutput(
+    canvas: HTMLCanvasElement,
+    format: string = 'image/jpeg',
+    quality: number = 0.92
+  ): Promise<{ dataUrl: string; blob: Blob }> {
+    return new Promise((resolve, reject) => {
+      try {
+        canvas.toBlob(
+          async (blob) => {
+            if (blob) {
+              let dataUrl = '';
+              try {
+                dataUrl = canvas.toDataURL(format, quality);
+              } catch {
+                dataUrl = await new Promise<string>((res) => {
+                  const r = new FileReader();
+                  r.onloadend = () => res(r.result as string);
+                  r.readAsDataURL(blob);
+                });
+              }
+              resolve({ dataUrl, blob });
+            } else {
+              const dataUrl = canvas.toDataURL(format, quality);
+              const parts = dataUrl.split(',');
+              const bstr = atob(parts[1]);
+              let n = bstr.length;
+              const u8 = new Uint8Array(n);
+              while (n--) u8[n] = bstr.charCodeAt(n);
+              const b = new Blob([u8], { type: format });
+              resolve({ dataUrl, blob: b });
+            }
+          },
+          format,
+          quality
+        );
+      } catch (err) {
+        try {
+          const dataUrl = canvas.toDataURL(format, quality);
+          const parts = dataUrl.split(',');
+          const bstr = atob(parts[1]);
+          let n = bstr.length;
+          const u8 = new Uint8Array(n);
+          while (n--) u8[n] = bstr.charCodeAt(n);
+          const b = new Blob([u8], { type: format });
+          resolve({ dataUrl, blob: b });
+        } catch (fatal) {
+          reject(fatal);
+        }
+      }
+    });
+  }
+
+  public downloadBlobOrDataUrl(data: Blob | string, filename: string) {
+    let objectUrl: string;
+    let needsRevoke = false;
+
+    if (data instanceof Blob) {
+      objectUrl = URL.createObjectURL(data);
+      needsRevoke = true;
+    } else if (typeof data === 'string' && data.startsWith('data:')) {
+      try {
+        const parts = data.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        objectUrl = URL.createObjectURL(blob);
+        needsRevoke = true;
+      } catch {
+        objectUrl = data;
+      }
+    } else {
+      objectUrl = data;
+    }
+
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    a.style.position = 'fixed';
+    a.style.top = '-9999px';
+    a.style.left = '-9999px';
+    a.style.opacity = '0';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      if (needsRevoke) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    }, 6000);
+  }
+
+  public saveProject(title: string, state: EditorState): RecentEdit {
+    const existingIndex = this.recentEdits.findIndex(
+      e => (state.originalImageUrl && e.state?.originalImageUrl === state.originalImageUrl) ||
+           (e.imageUrl === state.imageUrl) ||
+           (e.title === title && e.title !== 'Untitled Photo')
+    );
+    let saved: RecentEdit;
+    if (existingIndex !== -1) {
+      saved = this.recentEdits[existingIndex];
+      saved.date = 'Just now';
+      saved.title = title || saved.title;
+      saved.imageUrl = state.imageUrl;
+      saved.state = this.cloneState(state);
+      this.recentEdits.splice(existingIndex, 1);
+      this.recentEdits.unshift(saved);
+    } else {
+      saved = {
+        id: 'rec-' + Date.now(),
+        title: title || 'Saved Project',
+        imageUrl: state.imageUrl,
+        date: 'Just now',
+        state: this.cloneState(state)
+      };
+      this.recentEdits.unshift(saved);
+      if (this.recentEdits.length > 15) {
+        this.recentEdits.pop();
+      }
+    }
+    this.persistRecents();
+    return saved;
   }
 
   public getFilterCssString(state: EditorState): string {

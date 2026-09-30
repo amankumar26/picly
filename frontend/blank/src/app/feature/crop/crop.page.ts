@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
@@ -384,4 +384,9 @@ export class CropPage implements OnInit, OnDestroy, AfterViewInit {
     await this.applyCrop();
     this.router.navigate(['/feature/save']);
   };
+
+  @HostListener('window:resize')
+  onResize() {
+    this.onImageLoaded();
+  }
 }
