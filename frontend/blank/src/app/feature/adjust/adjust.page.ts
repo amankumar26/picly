@@ -103,6 +103,7 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
   @ViewChild('previewStage', { static: false }) previewStage!: ElementRef<HTMLDivElement>;
   @ViewChild('targetImg', { static: false }) targetImg!: ElementRef<HTMLImageElement>;
   @ViewChild('brushCanvas', { static: false }) brushCanvas!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('overlayMaskCanvas', { static: false }) overlayMaskCanvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('overlayFileInput', { static: false }) overlayFileInput!: ElementRef<HTMLInputElement>;
   @ViewChild('addLayerFileInput', { static: false }) addLayerFileInput!: ElementRef<HTMLInputElement>;
 
@@ -231,11 +232,44 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
   public selectiveSaturation = 0;
   public selectiveRadius = 40;
 
-  // 8. BRUSH STATE
-  public brushMode: 'exposure' | 'temperature' | 'saturation' | 'eraser' = 'exposure';
-  public brushSize = 35; // 10 to 80
-  public brushIntensity = 50; // -100 to 100 (Dodge/Burn)
-  private isBrushing = false;
+  // 8. BRUSH STATE (Presets + Transform + Blend & Opacity)
+  public brushSubTab: 'presets' | 'transform' | 'blend' = 'presets';
+  public brushMode: 'dodge' | 'burn' | 'warmth' | 'cool' | 'saturation' | 'desaturate' | 'glow' | 'neon' | 'custom' | 'eraser' = 'dodge';
+  public brushSize = 35; // 8 to 120
+  public brushIntensity = 60; // 10 to 100
+  public brushHardness = 40; // 5 to 100
+  public brushColor = '#ffffff';
+  public brushOpacity = 100; // 0 to 100
+  public brushBlendMode: 'normal' | 'screen' | 'multiply' | 'overlay' | 'soft-light' | 'color-dodge' = 'normal';
+  public brushTransform = {
+    x: 0,
+    y: 0,
+    scale: 1.0,
+    rotation: 0,
+    flipH: false,
+    flipV: false
+  };
+  public brushActiveParam: 'intensity' | 'size' | 'hardness' = 'intensity';
+  public brushTransformParam: 'scale' | 'rotation' | 'shiftX' | 'shiftY' = 'scale';
+  public isBrushing = false;
+  public hasBrushStrokes = false;
+
+  public brushPresets = [
+    { id: 'dodge', label: 'Dodge (Light)', icon: 'ti-sun', defaultBlend: 'screen', color: '#ffffff' },
+    { id: 'burn', label: 'Burn (Dark)', icon: 'ti-moon', defaultBlend: 'multiply', color: '#000000' },
+    { id: 'warmth', label: 'Warm Sun', icon: 'ti-flame', defaultBlend: 'soft-light', color: '#f59e0b' },
+    { id: 'cool', label: 'Cool Ice', icon: 'ti-snowflake', defaultBlend: 'soft-light', color: '#06b6d4' },
+    { id: 'glow', label: 'Soft Glow', icon: 'ti-sparkles', defaultBlend: 'screen', color: '#fef08a' },
+    { id: 'neon', label: 'Neon Pink', icon: 'ti-bolt', defaultBlend: 'screen', color: '#ec4899' },
+    { id: 'saturation', label: 'Saturate', icon: 'ti-droplet', defaultBlend: 'overlay', color: '#ff2e63' },
+    { id: 'desaturate', label: 'Desaturate', icon: 'ti-contrast', defaultBlend: 'normal', color: '#888888' },
+    { id: 'custom', label: 'Custom Color', icon: 'ti-palette', defaultBlend: 'normal', color: '#38bdf8' },
+    { id: 'eraser', label: 'Eraser', icon: 'ti-eraser', defaultBlend: 'normal', color: '#000000' }
+  ];
+
+  public brushColorSwatches = [
+    '#ffffff', '#fef08a', '#f59e0b', '#ef4444', '#ec4899', '#a855f7', '#3b82f6', '#06b6d4', '#10b981', '#000000'
+  ];
 
   // 9. COLOR GRADE STATE
   public colorGradeTonal: 'shadows' | 'midtones' | 'highlights' = 'shadows';
@@ -247,10 +281,20 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
   public wbTemperature = 0; // -100 (cool) to +100 (warm)
   public wbTint = 0; // -100 (green) to +100 (magenta)
 
-  // 11. OVERLAY / DOUBLE EXPOSURE STATE
+  // 11. OVERLAY / DOUBLE EXPOSURE STATE (Transform + Blend + Presets + Brush Masking)
   public Math = Math;
-  public overlaySubTab: 'transform' | 'blend' | 'presets' = 'transform';
+  public overlaySubTab: 'transform' | 'blend' | 'presets' | 'brush' = 'transform';
   public activeOverlayPresetId = 'golden-leak';
+  public overlayBrushMode: 'erase' | 'restore' = 'erase';
+  public overlayBrushSize = 45; // 5 to 150 px
+  public overlayBrushIntensity = 85; // 10 to 100 % (flow)
+  public overlayBrushHardness = 40; // 0 to 100 % (feather/hardness)
+  public overlayBrushActiveParam: 'size' | 'hardness' | 'intensity' = 'size';
+  public isOverlayBrushing = false;
+  public originalLayerImageUrls = new Map<string, string>();
+  private layerMaskAlphaCanvases = new Map<string, HTMLCanvasElement>();
+  private layerOriginalImgElements = new Map<string, HTMLImageElement>();
+  private layerCompositeCanvases = new Map<string, HTMLCanvasElement>();
   public overlayTransformParam: 'scale' | 'rotate' = 'scale';
   public overlayImageUrl: string | null = null;
   public overlayOpacity = 85; // 0 to 100
@@ -1775,14 +1819,16 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
   }
 
   // ==============================================================
-  // 8. BRUSH LOGIC (Interactive Canvas Painting)
+  // 8. BRUSH LOGIC (Interactive Painting + Transform + Blend + Presets)
   // ==============================================================
   private initBrushCanvas() {
     if (!this.brushCanvas?.nativeElement || !this.previewStage?.nativeElement) return;
     const cvs = this.brushCanvas.nativeElement;
     const rect = this.previewStage.nativeElement.getBoundingClientRect();
-    cvs.width = rect.width;
-    cvs.height = rect.height;
+    if (cvs.width !== rect.width || cvs.height !== rect.height) {
+      cvs.width = rect.width;
+      cvs.height = rect.height;
+    }
   }
 
   onBrushPointerDown(event: PointerEvent) {
@@ -1800,6 +1846,19 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     this.isBrushing = false;
   }
 
+  private hexToRgb(hex: string): { r: number; g: number; b: number } {
+    let clean = (hex || '#ffffff').replace('#', '');
+    if (clean.length === 3) {
+      clean = clean.split('').map(c => c + c).join('');
+    }
+    const num = parseInt(clean, 16) || 0;
+    return {
+      r: (num >> 16) & 255,
+      g: (num >> 8) & 255,
+      b: num & 255
+    };
+  }
+
   private paintBrushStroke(event: PointerEvent) {
     if (!this.brushCanvas?.nativeElement) return;
     const cvs = this.brushCanvas.nativeElement;
@@ -1811,25 +1870,53 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     const y = event.clientY - rect.top;
 
     ctx.save();
+    this.hasBrushStrokes = true;
+
     if (this.brushMode === 'eraser') {
       ctx.globalCompositeOperation = 'destination-out';
       ctx.beginPath();
       ctx.arc(x, y, this.brushSize, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      const grad = ctx.createRadialGradient(x, y, 0, x, y, this.brushSize);
-      if (this.brushMode === 'exposure') {
-        const isDodge = this.brushIntensity >= 0;
-        const color = isDodge ? '255, 255, 255' : '0, 0, 0';
-        const alpha = Math.abs(this.brushIntensity) / 250;
-        grad.addColorStop(0, `rgba(${color}, ${alpha})`);
-        grad.addColorStop(1, `rgba(${color}, 0)`);
-      } else if (this.brushMode === 'temperature') {
-        grad.addColorStop(0, `rgba(255, 170, 60, ${Math.abs(this.brushIntensity) / 300})`);
-        grad.addColorStop(1, 'rgba(255, 170, 60, 0)');
+      ctx.globalCompositeOperation = 'source-over';
+      const grad = ctx.createRadialGradient(
+        x, y, Math.max(0, this.brushSize * (this.brushHardness / 100) * 0.5),
+        x, y, this.brushSize
+      );
+
+      const alpha = Math.max(0.04, Math.min(1.0, (this.brushIntensity / 100) * 0.38));
+      const rgb = this.hexToRgb(this.brushColor);
+
+      if (this.brushMode === 'dodge') {
+        grad.addColorStop(0, `rgba(255, 255, 255, ${alpha * 1.2})`);
+        grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      } else if (this.brushMode === 'burn') {
+        grad.addColorStop(0, `rgba(0, 0, 0, ${alpha * 1.1})`);
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      } else if (this.brushMode === 'warmth') {
+        grad.addColorStop(0, `rgba(255, 160, 40, ${alpha})`);
+        grad.addColorStop(1, 'rgba(255, 160, 40, 0)');
+      } else if (this.brushMode === 'cool') {
+        grad.addColorStop(0, `rgba(40, 180, 255, ${alpha})`);
+        grad.addColorStop(1, 'rgba(40, 180, 255, 0)');
+      } else if (this.brushMode === 'glow') {
+        grad.addColorStop(0, `rgba(255, 245, 180, ${alpha * 1.3})`);
+        grad.addColorStop(0.5, `rgba(255, 200, 80, ${alpha * 0.6})`);
+        grad.addColorStop(1, 'rgba(255, 200, 80, 0)');
+      } else if (this.brushMode === 'neon') {
+        grad.addColorStop(0, `rgba(255, 40, 160, ${alpha * 1.4})`);
+        grad.addColorStop(0.6, `rgba(200, 20, 220, ${alpha * 0.7})`);
+        grad.addColorStop(1, 'rgba(200, 20, 220, 0)');
+      } else if (this.brushMode === 'saturation') {
+        grad.addColorStop(0, `rgba(255, 30, 90, ${alpha})`);
+        grad.addColorStop(1, 'rgba(255, 30, 90, 0)');
+      } else if (this.brushMode === 'desaturate') {
+        grad.addColorStop(0, `rgba(128, 128, 128, ${alpha})`);
+        grad.addColorStop(1, 'rgba(128, 128, 128, 0)');
       } else {
-        grad.addColorStop(0, `rgba(255, 40, 100, ${Math.abs(this.brushIntensity) / 300})`);
-        grad.addColorStop(1, 'rgba(255, 40, 100, 0)');
+        // Custom color
+        grad.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`);
+        grad.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
       }
 
       ctx.fillStyle = grad;
@@ -1838,6 +1925,46 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
       ctx.fill();
     }
     ctx.restore();
+  }
+
+  selectBrushPreset(preset: any) {
+    this.brushMode = preset.id;
+    if (preset.color) {
+      this.brushColor = preset.color;
+    }
+    if (preset.defaultBlend && this.brushBlendMode === 'normal') {
+      this.brushBlendMode = preset.defaultBlend;
+    }
+  }
+
+  clearBrushCanvas() {
+    if (this.brushCanvas?.nativeElement) {
+      const cvs = this.brushCanvas.nativeElement;
+      const ctx = cvs.getContext('2d');
+      ctx?.clearRect(0, 0, cvs.width, cvs.height);
+      this.hasBrushStrokes = false;
+      this.showToast('Cleared brush strokes');
+    }
+  }
+
+  resetBrushTransform() {
+    this.brushTransform = {
+      x: 0,
+      y: 0,
+      scale: 1.0,
+      rotation: 0,
+      flipH: false,
+      flipV: false
+    };
+    this.showToast('Reset brush transform');
+  }
+
+  flipBrushH() {
+    this.brushTransform.flipH = !this.brushTransform.flipH;
+  }
+
+  flipBrushV() {
+    this.brushTransform.flipV = !this.brushTransform.flipV;
   }
 
   applyBrush() {
@@ -1853,20 +1980,45 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     const ctx = canvas.getContext('2d');
 
     if (ctx) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      // 1. Draw base photo
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      ctx.drawImage(brushCvs, 0, 0, canvas.width, canvas.height);
+
+      // 2. Draw transformed & blended brush layer
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1.0, this.brushOpacity / 100));
+      ctx.globalCompositeOperation = this.mapBlendModeToCanvasComposite(this.brushBlendMode);
+
+      const cx = canvas.width / 2 + ((this.brushTransform.x / (brushCvs.width || 1)) * canvas.width);
+      const cy = canvas.height / 2 + ((this.brushTransform.y / (brushCvs.height || 1)) * canvas.height);
+
+      ctx.translate(cx, cy);
+      if (this.brushTransform.rotation !== 0) {
+        ctx.rotate((this.brushTransform.rotation * Math.PI) / 180);
+      }
+      ctx.scale(
+        (this.brushTransform.flipH ? -1 : 1) * this.brushTransform.scale,
+        (this.brushTransform.flipV ? -1 : 1) * this.brushTransform.scale
+      );
+
+      ctx.drawImage(brushCvs, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+      ctx.restore();
+
       const result = canvas.toDataURL('image/jpeg', 0.95);
-      this.photoState.applyCroppedImage(result, 'Brush Strokes');
-      this.showToast('Brush strokes applied');
+      this.photoState.applyCroppedImage(result, 'Brush Artwork');
+      this.showToast('Brush artwork applied!');
     }
+
+    this.clearBrushCanvas();
+    this.resetBrushTransform();
     this.activeToolMode = 'none';
   }
 
   cancelBrush() {
-    if (this.brushCanvas?.nativeElement) {
-      const ctx = this.brushCanvas.nativeElement.getContext('2d');
-      ctx?.clearRect(0, 0, this.brushCanvas.nativeElement.width, this.brushCanvas.nativeElement.height);
-    }
+    this.clearBrushCanvas();
+    this.resetBrushTransform();
     this.activeToolMode = 'none';
   }
 
@@ -2121,6 +2273,286 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
   onOverlayPointerUp(event: PointerEvent) {
     this.isOverlayDragging = false;
     (event.target as HTMLElement)?.releasePointerCapture?.(event.pointerId);
+  }
+
+  openOverlayBrushTab() {
+    this.overlaySubTab = 'brush';
+    const layer = this.selectedLayer;
+    if (layer && layer.type !== 'base') {
+      if (!this.originalLayerImageUrls.has(layer.id)) {
+        this.originalLayerImageUrls.set(layer.id, layer.imageUrl);
+      }
+      setTimeout(() => this.initOverlayMaskEngine(), 50);
+    }
+  }
+
+  public initOverlayMaskEngine(forceReset = false) {
+    if (!this.selectedLayer || this.selectedLayer.type === 'base') return;
+    const layer = this.selectedLayer;
+    const origUrl = this.originalLayerImageUrls.get(layer.id) || layer.imageUrl;
+    if (!this.originalLayerImageUrls.has(layer.id)) {
+      this.originalLayerImageUrls.set(layer.id, origUrl);
+    }
+
+    const cachedImg = this.layerOriginalImgElements.get(layer.id);
+    if (!cachedImg || cachedImg.src !== origUrl) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        this.layerOriginalImgElements.set(layer.id, img);
+        this.setupMaskCanvasesForLayer(layer.id, img, forceReset);
+      };
+      img.src = origUrl;
+    } else {
+      this.setupMaskCanvasesForLayer(layer.id, cachedImg, forceReset);
+    }
+  }
+
+  private setupMaskCanvasesForLayer(layerId: string, img: HTMLImageElement, forceReset = false) {
+    const w = img.naturalWidth || 800;
+    const h = img.naturalHeight || 600;
+
+    let maskCanvas = this.layerMaskAlphaCanvases.get(layerId);
+    if (!maskCanvas || forceReset) {
+      maskCanvas = document.createElement('canvas');
+      maskCanvas.width = w;
+      maskCanvas.height = h;
+      const maskCtx = maskCanvas.getContext('2d');
+      if (maskCtx) {
+        maskCtx.fillStyle = '#ffffff';
+        maskCtx.fillRect(0, 0, w, h);
+      }
+      this.layerMaskAlphaCanvases.set(layerId, maskCanvas);
+    }
+
+    let compCanvas = this.layerCompositeCanvases.get(layerId);
+    if (!compCanvas) {
+      compCanvas = document.createElement('canvas');
+      compCanvas.width = w;
+      compCanvas.height = h;
+      this.layerCompositeCanvases.set(layerId, compCanvas);
+    }
+
+    this.renderOverlayMaskComposite();
+  }
+
+  public renderOverlayMaskComposite() {
+    if (!this.selectedLayer) return;
+    const layerId = this.selectedLayer.id;
+    const origImg = this.layerOriginalImgElements.get(layerId);
+    const maskCanvas = this.layerMaskAlphaCanvases.get(layerId);
+    const compCanvas = this.layerCompositeCanvases.get(layerId);
+
+    if (!origImg || !maskCanvas || !compCanvas) return;
+
+    const w = compCanvas.width;
+    const h = compCanvas.height;
+    const ctxComp = compCanvas.getContext('2d');
+    if (!ctxComp) return;
+
+    ctxComp.clearRect(0, 0, w, h);
+    ctxComp.globalCompositeOperation = 'source-over';
+    ctxComp.drawImage(origImg, 0, 0, w, h);
+    ctxComp.globalCompositeOperation = 'destination-in';
+    ctxComp.drawImage(maskCanvas, 0, 0, w, h);
+
+    if (this.overlayMaskCanvas?.nativeElement) {
+      const cvs = this.overlayMaskCanvas.nativeElement;
+      cvs.width = w;
+      cvs.height = h;
+      const onScreenCtx = cvs.getContext('2d');
+      if (onScreenCtx) {
+        onScreenCtx.clearRect(0, 0, cvs.width, cvs.height);
+        onScreenCtx.drawImage(compCanvas, 0, 0, cvs.width, cvs.height);
+      }
+    }
+  }
+
+  onOverlayBrushPointerDown(event: PointerEvent) {
+    if (this.overlaySubTab !== 'brush') return;
+    event.stopPropagation();
+    event.preventDefault();
+    (event.target as HTMLElement)?.setPointerCapture?.(event.pointerId);
+    this.isOverlayBrushing = true;
+    this.paintOverlayBrushStroke(event);
+  }
+
+  onOverlayBrushPointerMove(event: PointerEvent) {
+    if (!this.isOverlayBrushing || this.overlaySubTab !== 'brush') return;
+    event.stopPropagation();
+    event.preventDefault();
+    this.paintOverlayBrushStroke(event);
+  }
+
+  onOverlayBrushPointerUp(event?: PointerEvent) {
+    if (!this.isOverlayBrushing) return;
+    this.isOverlayBrushing = false;
+    if (event) {
+      try {
+        (event.target as HTMLElement)?.releasePointerCapture?.(event.pointerId);
+      } catch (e) {}
+    }
+    this.commitOverlayMaskToLayer();
+  }
+
+  private paintOverlayBrushStroke(event: PointerEvent) {
+    if (!this.selectedLayer || !this.overlayMaskCanvas?.nativeElement) return;
+    const layerId = this.selectedLayer.id;
+    const maskCanvas = this.layerMaskAlphaCanvases.get(layerId);
+    const origImg = this.layerOriginalImgElements.get(layerId);
+    const compCanvas = this.layerCompositeCanvases.get(layerId);
+    const onScreenCvs = this.overlayMaskCanvas.nativeElement;
+
+    if (!maskCanvas || !origImg || !compCanvas) return;
+
+    const ctxMask = maskCanvas.getContext('2d');
+    if (!ctxMask) return;
+
+    let localX = 0;
+    let localY = 0;
+    const displayW = Math.max(1, onScreenCvs.clientWidth);
+    const displayH = Math.max(1, onScreenCvs.clientHeight);
+
+    if (event.offsetX !== undefined && event.offsetY !== undefined && !isNaN(event.offsetX) && event.offsetX >= 0) {
+      localX = (event.offsetX / displayW) * maskCanvas.width;
+      localY = (event.offsetY / displayH) * maskCanvas.height;
+    } else {
+      const rect = onScreenCvs.getBoundingClientRect();
+      const clickX = event.clientX - rect.left;
+      const clickY = event.clientY - rect.top;
+      localX = (clickX / Math.max(1, rect.width)) * maskCanvas.width;
+      localY = (clickY / Math.max(1, rect.height)) * maskCanvas.height;
+    }
+
+    const scaleFactor = maskCanvas.width / displayW;
+    const radius = Math.max(2, this.overlayBrushSize * scaleFactor * 0.5);
+    const hardness = Math.max(0, Math.min(100, this.overlayBrushHardness)) / 100;
+    const flow = Math.max(0.05, Math.min(1.0, this.overlayBrushIntensity / 100));
+    const innerRadius = Math.max(0, radius * hardness);
+
+    ctxMask.save();
+
+    if (this.overlayBrushMode === 'erase') {
+      ctxMask.globalCompositeOperation = 'destination-out';
+      const grad = ctxMask.createRadialGradient(localX, localY, innerRadius, localX, localY, radius);
+      grad.addColorStop(0, 'rgba(0, 0, 0, ' + flow + ')');
+      if (innerRadius > 0 && innerRadius < radius) {
+        grad.addColorStop(innerRadius / radius, 'rgba(0, 0, 0, ' + flow + ')');
+      }
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctxMask.fillStyle = grad;
+      ctxMask.beginPath();
+      ctxMask.arc(localX, localY, radius, 0, Math.PI * 2);
+      ctxMask.fill();
+    } else {
+      ctxMask.globalCompositeOperation = 'source-over';
+      const grad = ctxMask.createRadialGradient(localX, localY, innerRadius, localX, localY, radius);
+      grad.addColorStop(0, 'rgba(255, 255, 255, ' + flow + ')');
+      if (innerRadius > 0 && innerRadius < radius) {
+        grad.addColorStop(innerRadius / radius, 'rgba(255, 255, 255, ' + flow + ')');
+      }
+      grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctxMask.fillStyle = grad;
+      ctxMask.beginPath();
+      ctxMask.arc(localX, localY, radius, 0, Math.PI * 2);
+      ctxMask.fill();
+    }
+
+    ctxMask.restore();
+
+    const w = compCanvas.width;
+    const h = compCanvas.height;
+    const ctxComp = compCanvas.getContext('2d');
+    if (ctxComp) {
+      ctxComp.clearRect(0, 0, w, h);
+      ctxComp.globalCompositeOperation = 'source-over';
+      ctxComp.drawImage(origImg, 0, 0, w, h);
+      ctxComp.globalCompositeOperation = 'destination-in';
+      ctxComp.drawImage(maskCanvas, 0, 0, w, h);
+    }
+
+    const onScreenCtx = onScreenCvs.getContext('2d');
+    if (onScreenCtx) {
+      onScreenCtx.clearRect(0, 0, onScreenCvs.width, onScreenCvs.height);
+      onScreenCtx.drawImage(compCanvas, 0, 0, onScreenCvs.width, onScreenCvs.height);
+    }
+  }
+
+  private commitOverlayMaskToLayer() {
+    if (!this.selectedLayer) return;
+    const compCanvas = this.layerCompositeCanvases.get(this.selectedLayer.id);
+    if (!compCanvas) return;
+    const updatedUrl = compCanvas.toDataURL('image/png');
+    this.selectedLayer.imageUrl = updatedUrl;
+  }
+
+  invertOverlayMask() {
+    if (!this.selectedLayer) return;
+    const maskCanvas = this.layerMaskAlphaCanvases.get(this.selectedLayer.id);
+    if (!maskCanvas) {
+      this.initOverlayMaskEngine();
+      return;
+    }
+    const ctxMask = maskCanvas.getContext('2d');
+    if (!ctxMask) return;
+
+    const imgData = ctxMask.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i + 3] = 255 - data[i + 3];
+      data[i] = 255;
+      data[i + 1] = 255;
+      data[i + 2] = 255;
+    }
+    ctxMask.putImageData(imgData, 0, 0);
+    this.renderOverlayMaskComposite();
+    this.commitOverlayMaskToLayer();
+    this.showToast('Inverted overlay mask');
+  }
+
+  hideAllOverlayMask() {
+    if (!this.selectedLayer) return;
+    const maskCanvas = this.layerMaskAlphaCanvases.get(this.selectedLayer.id);
+    if (!maskCanvas) {
+      this.initOverlayMaskEngine();
+      return;
+    }
+    const ctxMask = maskCanvas.getContext('2d');
+    if (!ctxMask) return;
+
+    ctxMask.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    this.renderOverlayMaskComposite();
+    this.commitOverlayMaskToLayer();
+    this.overlayBrushMode = 'restore';
+    this.showToast('Overlay hidden (0%). Brush over image to reveal overlay.');
+  }
+
+  showAllOverlayMask() {
+    if (!this.selectedLayer) return;
+    const maskCanvas = this.layerMaskAlphaCanvases.get(this.selectedLayer.id);
+    if (!maskCanvas) {
+      this.initOverlayMaskEngine();
+      return;
+    }
+    const ctxMask = maskCanvas.getContext('2d');
+    if (!ctxMask) return;
+
+    ctxMask.fillStyle = '#ffffff';
+    ctxMask.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+    this.renderOverlayMaskComposite();
+    this.commitOverlayMaskToLayer();
+    this.overlayBrushMode = 'erase';
+    this.showToast('Overlay fully shown (100%). Brush over image to mask/erase.');
+  }
+
+  resetOverlayLayerBrush() {
+    if (!this.selectedLayer) return;
+    const origUrl = this.originalLayerImageUrls.get(this.selectedLayer.id);
+    if (origUrl) {
+      this.selectedLayer.imageUrl = origUrl;
+      this.initOverlayMaskEngine(true);
+      this.showToast('Reset overlay layer to original');
+    }
   }
 
   applyOverlay() {
