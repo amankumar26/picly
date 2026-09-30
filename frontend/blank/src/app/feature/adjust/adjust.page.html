@@ -122,6 +122,7 @@
             <div *ngIf="layer.visible" class="interactive-canvas-layer" [class.is-selected]="layer.id === selectedLayerId"
               [class.is-overlay-active]="activeToolMode === 'overlay' && layer.id === selectedLayerId"
               [style.z-index]="15 + getLayerZIndex(layer.id)" [style.left.%]="layer.x" [style.top.%]="layer.y"
+              [style.width.%]="layer.baseWidthPct || 100"
               [style.transform]="'translate(-50%, -50%) rotate(' + (layer.rotation || 0) + 'deg) scale(' + ((layer.flipH ? -1 : 1) * (layer.scale || 1)) + ', ' + ((layer.flipV ? -1 : 1) * (layer.scale || 1)) + ')'"
               [style.opacity]="layer.opacity / 100" [style.mix-blend-mode]="layer.blendMode"
               (pointerdown)="onCanvasLayerPointerDown($event, layer)">
@@ -1154,6 +1155,24 @@
             <div class="action-text">
               <strong>Save Image to Device</strong>
               <span>Download high-quality image to your device storage</span>
+            </div>
+          </button>
+
+          <button type="button" class="export-action-item action-save-project" [disabled]="isExporting"
+            (click)="saveProjectAction()">
+            <i class="ti ti-device-floppy"></i>
+            <div class="action-text">
+              <strong>Save as Project</strong>
+              <span>Save edits and layers to resume modifying anytime</span>
+            </div>
+          </button>
+
+          <button type="button" class="export-action-item action-share-photo" [disabled]="isExporting"
+            (click)="sharePhotoAction()">
+            <i class="ti ti-share"></i>
+            <div class="action-text">
+              <strong>Share to Apps</strong>
+              <span>Send directly to WhatsApp, Instagram, or system share</span>
             </div>
           </button>
         </div>

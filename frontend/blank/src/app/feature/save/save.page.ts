@@ -108,15 +108,15 @@ export class SavePage implements OnInit, OnDestroy {
   }
 
   private async renderFinalCanvasOutput(): Promise<{ dataUrl: string; blob: Blob }> {
-    const img = await this.photoState.loadSafeImage(this.state.imageUrl);
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      throw new Error('Canvas context not available');
-    }
+    const baseSrc = this.state.imageUrl;
+    const img = await this.photoState.loadSafeImage(baseSrc);
+    const naturalW = img.naturalWidth || img.width || 1200;
+    const naturalH = img.naturalHeight || img.height || 900;
+    const rot = ((this.state.rotation || 0) % 360 + 360) % 360;
+    const isRotated90 = rot === 90 || rot === 270;
 
-    let width = img.naturalWidth || img.width || 800;
-    let height = img.naturalHeight || img.height || 600;
+    let width = isRotated90 ? naturalH : naturalW;
+    let height = isRotated90 ? naturalW : naturalH;
 
     // Apply crop aspect ratio if chosen
     if (this.state.aspectRatio === '1:1') {
@@ -124,29 +124,98 @@ export class SavePage implements OnInit, OnDestroy {
       width = side;
       height = side;
     } else if (this.state.aspectRatio === '4:3') {
-      height = Math.round(width * 3 / 4);
+      height = Math.round((width * 3) / 4);
     } else if (this.state.aspectRatio === '16:9') {
-      height = Math.round(width * 9 / 16);
+      height = Math.round((width * 9) / 16);
     }
 
+    const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) {
+      throw new Error('Canvas context not available');
+    }
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    if (this.filterCss && this.filterCss.trim() !== '' && this.filterCss !== 'none') {
+    const currentFilterCss = this.photoState.getFilterCssString(this.state);
+    let filterAppliedSuccessfully = false;
+
+    if (currentFilterCss && currentFilterCss !== 'none') {
       try {
-        ctx.filter = this.filterCss;
-      } catch {}
+        ctx.filter = currentFilterCss;
+        if (ctx.filter && ctx.filter !== 'none') {
+          filterAppliedSuccessfully = true;
+        }
+      } catch {
+        ctx.filter = 'none';
+      }
     }
-    
+
     ctx.save();
     ctx.translate(width / 2, height / 2);
-    ctx.rotate((this.state.rotation * Math.PI) / 180);
+    if (rot !== 0) {
+      ctx.rotate((rot * Math.PI) / 180);
+    }
     ctx.scale(this.state.flipH ? -1 : 1, this.state.flipV ? -1 : 1);
-    ctx.drawImage(img, -width / 2, -height / 2, width, height);
+    ctx.drawImage(img, -naturalW / 2, -naturalH / 2, naturalW, naturalH);
     ctx.restore();
+
+    if (currentFilterCss && currentFilterCss !== 'none' && !filterAppliedSuccessfully) {
+      this.photoState.applySoftwareFilters(ctx, canvas.width, canvas.height, this.state);
+    }
+
+    // Vignette
+    const vignetteAmount = (this.state.adjustments?.vignette || 0) / 100;
+    if (vignetteAmount > 0) {
+      ctx.save();
+      const maxDim = Math.sqrt(Math.pow(canvas.width / 2, 2) + Math.pow(canvas.height / 2, 2));
+      const grad = ctx.createRadialGradient(
+        canvas.width / 2,
+        canvas.height / 2,
+        maxDim * Math.max(0.1, 0.65 - vignetteAmount * 0.4),
+        canvas.width / 2,
+        canvas.height / 2,
+        maxDim
+      );
+      grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      grad.addColorStop(1, `rgba(0, 0, 0, ${Math.min(0.95, vignetteAmount * 0.85)})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+
+    // Upper layers
+    if (this.state.layers && Array.isArray(this.state.layers)) {
+      for (const layer of this.state.layers) {
+        if (layer.type === 'base' || !layer.visible) continue;
+        try {
+          const lImg = await this.photoState.loadSafeImage(layer.imageUrl);
+          ctx.save();
+          const cx = ((layer.x ?? 50) / 100) * canvas.width;
+          const cy = ((layer.y ?? 50) / 100) * canvas.height;
+          ctx.translate(cx, cy);
+          if (layer.rotation) {
+            ctx.rotate(((layer.rotation || 0) * Math.PI) / 180);
+          }
+          const sx = (layer.flipH ? -1 : 1) * (layer.scale || 1);
+          const sy = (layer.flipV ? -1 : 1) * (layer.scale || 1);
+          ctx.scale(sx, sy);
+          ctx.globalAlpha = Math.max(0.01, Math.min(1.0, (layer.opacity ?? 100) / 100));
+
+          const baseWidthRatio = ((layer as any).baseWidthPct ?? 100) / 100;
+          const overW = canvas.width * baseWidthRatio;
+          const lNatW = lImg.naturalWidth || lImg.width || 800;
+          const lNatH = lImg.naturalHeight || lImg.height || 600;
+          const overH = (overW * lNatH) / lNatW;
+          ctx.drawImage(lImg, -overW / 2, -overH / 2, overW, overH);
+          ctx.restore();
+        } catch {}
+      }
+    }
 
     return await this.photoState.getCanvasOutput(canvas, this.selectedFormat, this.selectedQuality);
   }

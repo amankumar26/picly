@@ -483,6 +483,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  transform-origin: center center;
   transition: box-shadow 0.2s ease;
 
   &:active {
@@ -490,14 +491,12 @@
   }
 
   .canvas-layer-img {
-    max-width: 82vw;
-    max-height: 65vh;
-    width: auto;
+    width: 100%;
     height: auto;
     object-fit: contain;
     display: block;
     pointer-events: none;
-    border-radius: 6px;
+    border-radius: 4px;
     filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.7));
   }
 
@@ -1935,38 +1934,7 @@
   }
 }
 
-/* Canvas Layers (Multi-layer rendering) */
-.interactive-canvas-layer {
-  position: absolute;
-  pointer-events: auto;
-  touch-action: none;
-  cursor: grab;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  &:active {
-    cursor: grabbing;
-  }
-
-  .canvas-layer-img {
-    max-width: 280px;
-    max-height: 280px;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-    display: block;
-    pointer-events: none;
-    border-radius: 8px;
-    filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.65));
-  }
-
-  &.is-selected {
-    outline: 1.5px dashed rgba(255, 255, 255, 0.4);
-    outline-offset: 4px;
-  }
-}
+/* Multi-layer styles unified above */
 
 /* ============================================================== */
 /* LAYERS SIDE PANEL DRAWER (Slide-in from Right)                 */

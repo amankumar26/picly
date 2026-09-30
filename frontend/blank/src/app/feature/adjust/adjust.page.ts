@@ -71,6 +71,7 @@ export interface ImageLayer {
   x: number; // % (default 50)
   y: number; // % (default 50)
   scale: number; // default 1.0
+  baseWidthPct?: number;
   rotation: number; // deg (default 0)
   flipH: boolean;
   flipV: boolean;
@@ -816,7 +817,7 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     canvas.width = isRotated90 ? naturalH : naturalW;
     canvas.height = isRotated90 ? naturalW : naturalH;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
       throw new Error('Canvas 2D context not available');
     }
@@ -827,17 +828,26 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     // 1. Draw Base Photo Layer with Filters & Rotation
     if (!this.baseLayer || this.baseLayer.visible) {
       ctx.save();
+      const currentFilterCss = this.photoState.getFilterCssString(this.state);
       const filterParts = [
-        this.filterCss,
+        currentFilterCss,
         this.hdrCssFilter,
         this.wbCssFilter,
         this.colorGradeCssFilter
-      ].filter(f => f && f.trim() !== '' && f !== 'none');
+      ].filter(f => f && typeof f === 'string' && f.trim() !== '' && f !== 'none');
 
-      if (filterParts.length > 0) {
+      const filterStr = filterParts.join(' ').trim();
+      let filterAppliedSuccessfully = false;
+
+      if (filterStr && filterStr !== 'none') {
         try {
-          ctx.filter = filterParts.join(' ').trim();
-        } catch {}
+          ctx.filter = filterStr;
+          if (ctx.filter && ctx.filter !== 'none') {
+            filterAppliedSuccessfully = true;
+          }
+        } catch {
+          ctx.filter = 'none';
+        }
       }
 
       ctx.globalAlpha = Math.max(0, Math.min(1, (this.baseLayer?.opacity ?? 100) / 100));
@@ -850,9 +860,34 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
       ctx.scale(this.state.flipH ? -1 : 1, this.state.flipV ? -1 : 1);
       ctx.drawImage(baseImg, -naturalW / 2, -naturalH / 2, naturalW, naturalH);
       ctx.restore();
+
+      // If ctx.filter was not applied or unsupported, run pixel-level software filter fallback
+      if (filterStr && filterStr !== 'none' && !filterAppliedSuccessfully) {
+        this.photoState.applySoftwareFilters(ctx, canvas.width, canvas.height, this.state);
+      }
     }
 
-    // 2. Draw Upper Layers (Overlays, Stickers, Added Photos)
+    // 2. Draw Vignette Radial Gradient if active
+    const vignetteAmount = (this.state.adjustments?.vignette || 0) / 100;
+    if (vignetteAmount > 0) {
+      ctx.save();
+      const maxDim = Math.sqrt(Math.pow(canvas.width / 2, 2) + Math.pow(canvas.height / 2, 2));
+      const grad = ctx.createRadialGradient(
+        canvas.width / 2,
+        canvas.height / 2,
+        maxDim * Math.max(0.1, 0.65 - vignetteAmount * 0.4),
+        canvas.width / 2,
+        canvas.height / 2,
+        maxDim
+      );
+      grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      grad.addColorStop(1, `rgba(0, 0, 0, ${Math.min(0.95, vignetteAmount * 0.85)})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+
+    // 3. Draw Upper Layers (Overlays, Stickers, Added Photos)
     for (const layer of this.nonBaseLayers) {
       if (!layer.visible) continue;
       try {
@@ -870,7 +905,8 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
         ctx.globalAlpha = Math.max(0.01, Math.min(1.0, (layer.opacity ?? 100) / 100));
         ctx.globalCompositeOperation = this.mapBlendModeToCanvasComposite(layer.blendMode);
 
-        const overW = canvas.width * 0.85;
+        const baseWidthRatio = (layer.baseWidthPct ?? 100) / 100;
+        const overW = canvas.width * baseWidthRatio;
         const lNatW = lImg.naturalWidth || lImg.width || 800;
         const lNatH = lImg.naturalHeight || lImg.height || 600;
         const overH = (overW * lNatH) / lNatW;
@@ -881,12 +917,26 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
       }
     }
 
-    // 3. Draw Brush Canvas if painted
-    if (this.brushCanvas?.nativeElement) {
+    // 4. Draw Brush Canvas if painted
+    if (this.brushCanvas?.nativeElement && this.hasBrushStrokes) {
       ctx.save();
-      ctx.globalAlpha = 1.0;
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.drawImage(this.brushCanvas.nativeElement, 0, 0, canvas.width, canvas.height);
+      const brushCvs = this.brushCanvas.nativeElement;
+      ctx.globalAlpha = Math.max(0, Math.min(1.0, this.brushOpacity / 100));
+      ctx.globalCompositeOperation = this.mapBlendModeToCanvasComposite(this.brushBlendMode);
+
+      const cx = canvas.width / 2 + ((this.brushTransform.x / (brushCvs.width || 1)) * canvas.width);
+      const cy = canvas.height / 2 + ((this.brushTransform.y / (brushCvs.height || 1)) * canvas.height);
+
+      ctx.translate(cx, cy);
+      if (this.brushTransform.rotation !== 0) {
+        ctx.rotate((this.brushTransform.rotation * Math.PI) / 180);
+      }
+      ctx.scale(
+        (this.brushTransform.flipH ? -1 : 1) * this.brushTransform.scale,
+        (this.brushTransform.flipV ? -1 : 1) * this.brushTransform.scale
+      );
+
+      ctx.drawImage(brushCvs, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
       ctx.restore();
     }
 

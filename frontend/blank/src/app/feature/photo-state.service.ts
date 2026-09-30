@@ -27,6 +27,7 @@ export interface ImageLayer {
   x: number; // % (default 50)
   y: number; // % (default 50)
   scale: number; // default 1.0
+  baseWidthPct?: number;
   rotation: number; // deg (default 0)
   flipH: boolean;
   flipV: boolean;
@@ -709,60 +710,170 @@ export class PhotoStateService {
   }
 
   public getFilterCssString(state: EditorState): string {
-    const adj = state.adjustments;
-    const b = 1 + (adj.brightness / 100);
-    const c = 1 + (adj.contrast / 100);
-    const s = 1 + (adj.saturation / 100);
-    const hl = 1 + (adj.highlights / 200);
-    const sh = 1 + (adj.shadows / 200);
+    if (!state) return 'none';
+    const adj = state.adjustments || {
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      highlights: 0,
+      shadows: 0,
+      warmth: 0,
+      vignette: 0
+    };
+    const b = 1 + ((adj.brightness || 0) / 100);
+    const c = 1 + ((adj.contrast || 0) / 100);
+    const s = 1 + ((adj.saturation || 0) / 100);
+    const hl = 1 + ((adj.highlights || 0) / 200);
+    const sh = 1 + ((adj.shadows || 0) / 200);
 
-    let filterCss = `brightness(${b * hl * sh}) contrast(${c}) saturate(${s})`;
+    const parts: string[] = [];
+    const totalBrightness = Math.max(0.01, b * hl * sh);
+    if (Math.abs(totalBrightness - 1) > 0.001) {
+      parts.push(`brightness(${totalBrightness.toFixed(3)})`);
+    }
+    if (Math.abs(c - 1) > 0.001) {
+      parts.push(`contrast(${Math.max(0.01, c).toFixed(3)})`);
+    }
+    if (Math.abs(s - 1) > 0.001) {
+      parts.push(`saturate(${Math.max(0, s).toFixed(3)})`);
+    }
 
-    if (adj.warmth !== 0) {
+    if (adj.warmth && adj.warmth !== 0) {
       if (adj.warmth > 0) {
-        filterCss += ` sepia(${adj.warmth * 0.35}%) hue-rotate(${-adj.warmth * 0.15}deg)`;
+        parts.push(`sepia(${(adj.warmth * 0.35).toFixed(1)}%) hue-rotate(${(-adj.warmth * 0.15).toFixed(1)}deg)`);
       } else {
-        filterCss += ` hue-rotate(${-adj.warmth * 0.3}deg)`;
+        parts.push(`hue-rotate(${(-adj.warmth * 0.3).toFixed(1)}deg)`);
       }
     }
 
     switch (state.filter) {
       case 'portrait':
-        filterCss += ' contrast(106%) brightness(104%) saturate(112%)';
+        parts.push('contrast(1.06) brightness(1.04) saturate(1.12)');
         break;
       case 'pop':
-        filterCss += ' contrast(118%) saturate(135%) brightness(105%)';
+        parts.push('contrast(1.18) saturate(1.35) brightness(1.05)');
         break;
       case 'smooth':
-        filterCss += ' contrast(95%) brightness(108%) saturate(92%)';
+        parts.push('contrast(0.95) brightness(1.08) saturate(0.92)');
         break;
       case 'fade':
-        filterCss += ' contrast(90%) brightness(110%) sepia(20%)';
+        parts.push('contrast(0.90) brightness(1.10) sepia(20%)');
         break;
       case 'bw':
-        filterCss += ' grayscale(100%) contrast(120%)';
+        parts.push('grayscale(100%) contrast(1.20)');
         break;
       case 'sepia':
-        filterCss += ' sepia(85%) contrast(110%)';
+        parts.push('sepia(85%) contrast(1.10)');
         break;
       case 'warm':
-        filterCss += ' sepia(35%) saturate(140%) hue-rotate(-15deg)';
+        parts.push('sepia(35%) saturate(1.40) hue-rotate(-15deg)');
         break;
       case 'cool':
-        filterCss += ' hue-rotate(180deg) saturate(110%)';
+        parts.push('hue-rotate(180deg) saturate(1.10)');
         break;
       case 'vintage':
-        filterCss += ' sepia(40%) contrast(120%) brightness(90%)';
+        parts.push('sepia(40%) contrast(1.20) brightness(0.90)');
         break;
       case 'vivid':
-        filterCss += ' saturate(190%) contrast(115%)';
+        parts.push('saturate(1.90) contrast(1.15)');
         break;
       case 'drama':
-        filterCss += ' contrast(150%) brightness(90%) saturate(120%)';
+        parts.push('contrast(1.50) brightness(0.90) saturate(1.20)');
         break;
       default:
         break;
     }
-    return filterCss;
+
+    return parts.join(' ').trim() || 'none';
+  }
+
+  public applySoftwareFilters(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    state: EditorState
+  ) {
+    if (!state) return;
+    const adj = state.adjustments || {
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      highlights: 0,
+      shadows: 0,
+      warmth: 0,
+      vignette: 0
+    };
+
+    const hasAdjustments =
+      (adj.brightness || 0) !== 0 ||
+      (adj.contrast || 0) !== 0 ||
+      (adj.saturation || 0) !== 0 ||
+      (adj.highlights || 0) !== 0 ||
+      (adj.shadows || 0) !== 0 ||
+      (adj.warmth || 0) !== 0 ||
+      (state.filter && state.filter !== 'none');
+
+    if (!hasAdjustments) return;
+
+    try {
+      const imgData = ctx.getImageData(0, 0, width, height);
+      const data = imgData.data;
+      const bFactor = Math.max(0.01, 1 + ((adj.brightness || 0) / 100) * (1 + ((adj.highlights || 0) / 200)));
+      const cFactor = Math.max(0.01, 1 + (adj.contrast || 0) / 100);
+      const sFactor = Math.max(0, 1 + (adj.saturation || 0) / 100);
+      const warmth = adj.warmth || 0;
+      const isBw = state.filter === 'bw';
+      const isSepia = state.filter === 'sepia';
+
+      for (let i = 0; i < data.length; i += 4) {
+        let r = data[i];
+        let g = data[i + 1];
+        let b = data[i + 2];
+
+        // Brightness
+        r = r * bFactor;
+        g = g * bFactor;
+        b = b * bFactor;
+
+        // Contrast
+        r = (r - 128) * cFactor + 128;
+        g = (g - 128) * cFactor + 128;
+        b = (b - 128) * cFactor + 128;
+
+        // Saturation / Grayscale
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (isBw) {
+          r = gray * 1.2;
+          g = gray * 1.2;
+          b = gray * 1.2;
+        } else if (isSepia) {
+          r = gray + 40;
+          g = gray + 20;
+          b = gray - 20;
+        } else if (sFactor !== 1) {
+          r = gray + (r - gray) * sFactor;
+          g = gray + (g - gray) * sFactor;
+          b = gray + (b - gray) * sFactor;
+        }
+
+        // Warmth
+        if (warmth > 0) {
+          r += warmth * 0.4;
+          b -= warmth * 0.2;
+        } else if (warmth < 0) {
+          b += Math.abs(warmth) * 0.4;
+          r -= Math.abs(warmth) * 0.2;
+        }
+
+        data[i] = Math.max(0, Math.min(255, Math.round(r)));
+        data[i + 1] = Math.max(0, Math.min(255, Math.round(g)));
+        data[i + 2] = Math.max(0, Math.min(255, Math.round(b)));
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+    } catch (e) {
+      console.warn('Software filter fallback skipped:', e);
+    }
   }
 }
+
