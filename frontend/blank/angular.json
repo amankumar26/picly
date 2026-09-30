@@ -31,6 +31,16 @@
                 "glob": "**/*",
                 "input": "src/assets",
                 "output": "assets"
+              },
+              {
+                "glob": "manifest.webmanifest",
+                "input": "src",
+                "output": ""
+              },
+              {
+                "glob": "sw.js",
+                "input": "src",
+                "output": ""
               }
             ],
             "styles": [
@@ -43,6 +53,7 @@
           },
           "configurations": {
             "production": {
+              "serviceWorker": "ngsw-config.json",
               "budgets": [
                 {
                   "type": "initial",

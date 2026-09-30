@@ -42,6 +42,10 @@
       <div class="header-right">
         <!-- Desktop Direct Actions (Upload & Camera buttons) -->
         <div class="desktop-action-group" *ngIf="!isSelectMode">
+          <button type="button" class="desktop-quick-btn pwa-install-btn" *ngIf="pwaInstall.canInstall$ | async" (click)="pwaInstall.promptInstall()" title="Install Picly App on your device">
+            <i class="ti ti-download"></i>
+            <span>Install App</span>
+          </button>
           <button type="button" class="desktop-quick-btn desktop-add-btn" (click)="onAddPhotoClick()" title="Upload image from computer">
             <i class="ti ti-upload"></i>
             <span>Upload Photo</span>
@@ -94,6 +98,10 @@
     <!-- More Menu Dropdown -->
     <div class="dropdown-backdrop" *ngIf="showMoreMenu" (click)="showMoreMenu = false">
       <div class="more-menu-panel" (click)="$event.stopPropagation()">
+        <button class="menu-item pwa-install-item" *ngIf="pwaInstall.canInstall$ | async" (click)="pwaInstall.promptInstall(); showMoreMenu = false">
+          <i class="ti ti-download"></i>
+          <span>Install Picly App</span>
+        </button>
         <button class="menu-item" (click)="onAddPhotoClick(); showMoreMenu = false">
           <i class="ti ti-photo-plus"></i>
           <span>Add new photo</span>

@@ -2,6 +2,7 @@ import { Component, ElementRef, OnInit, ViewChild, HostListener } from '@angular
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { PhotoStateService, RecentEdit } from '../feature/photo-state.service';
+import { PwaInstallService } from '../core/pwa-install.service';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 
 export interface GalleryPhoto {
@@ -39,6 +40,7 @@ export class HomePage implements OnInit {
 
   constructor(
     public photoState: PhotoStateService,
+    public pwaInstall: PwaInstallService,
     private router: Router
   ) {}
 

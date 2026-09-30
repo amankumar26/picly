@@ -3,17 +3,38 @@
 
 <head>
   <meta charset="utf-8" />
-  <title>Picly</title>
+  <title>Picly - Photo Editor & Studio</title>
 
   <base href="/" />
 
-  <meta name="color-scheme" content="light dark" />
+  <!-- PWA & Mobile Meta Tags -->
+  <meta name="color-scheme" content="dark light" />
   <meta name="viewport"
     content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="format-detection" content="telephone=no" />
   <meta name="msapplication-tap-highlight" content="no" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="Professional photo editor & creative studio with layers, double exposure, and fine-tune filters." />
 
-  <link rel="icon" type="image/png" href="assets/icon/favicon.png" />
+  <!-- Web App Manifest -->
+  <link rel="manifest" href="manifest.webmanifest" />
+
+  <!-- Favicons & App Icons -->
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/icon/favicon.png" />
+  <link rel="apple-touch-icon" href="assets/icon/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="assets/icon/icon-152x152.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icon/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="assets/icon/icon-192x192.png" />
+
+  <!-- iOS PWA Meta Tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Picly" />
+  <meta name="mobile-web-app-capable" content="yes" />
+
+  <!-- Microsoft Windows Tile -->
+  <meta name="msapplication-TileColor" content="#0f172a" />
+  <meta name="msapplication-TileImage" content="assets/icon/icon-144x144.png" />
 
   <!-- Tabler Icons & Google Fonts -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
@@ -22,9 +43,18 @@
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Pacifico&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
     rel="stylesheet">
 
-  <!-- add to homescreen for ios -->
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').then((reg) => {
+          console.log('Picly Service Worker registered successfully:', reg.scope);
+        }).catch((err) => {
+          console.log('Service Worker registration fallback:', err);
+        });
+      });
+    }
+  </script>
 </head>
 
 <body>
