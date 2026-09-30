@@ -1177,8 +1177,8 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     this.selectedLayer.blendMode = this.overlayBlendMode;
     this.selectedLayer.x = this.overlayPos.x;
     this.selectedLayer.y = this.overlayPos.y;
-    if (this.overlayImageUrl && this.overlayImageUrl !== this.selectedLayer.imageUrl) {
-      this.selectedLayer.imageUrl = this.overlayImageUrl;
+    if (this.overlaySubTab === 'brush') {
+      this.commitOverlayMaskToLayer();
     }
   }
 
@@ -2275,6 +2275,16 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     (event.target as HTMLElement)?.releasePointerCapture?.(event.pointerId);
   }
 
+  setOverlaySubTab(tab: 'transform' | 'blend' | 'presets' | 'brush') {
+    if (this.overlaySubTab === 'brush' && tab !== 'brush') {
+      this.commitOverlayMaskToLayer();
+    }
+    this.overlaySubTab = tab;
+    if (tab === 'brush') {
+      this.openOverlayBrushTab();
+    }
+  }
+
   openOverlayBrushTab() {
     this.overlaySubTab = 'brush';
     const layer = this.selectedLayer;
@@ -2295,7 +2305,7 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     }
 
     const cachedImg = this.layerOriginalImgElements.get(layer.id);
-    if (!cachedImg || cachedImg.src !== origUrl) {
+    if (!cachedImg || cachedImg.src !== origUrl || !cachedImg.complete) {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
@@ -2309,8 +2319,8 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private setupMaskCanvasesForLayer(layerId: string, img: HTMLImageElement, forceReset = false) {
-    const w = img.naturalWidth || 800;
-    const h = img.naturalHeight || 600;
+    const w = img.naturalWidth || img.width || 800;
+    const h = img.naturalHeight || img.height || 600;
 
     let maskCanvas = this.layerMaskAlphaCanvases.get(layerId);
     if (!maskCanvas || forceReset) {
@@ -2413,7 +2423,7 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     const displayW = Math.max(1, onScreenCvs.clientWidth);
     const displayH = Math.max(1, onScreenCvs.clientHeight);
 
-    if (event.offsetX !== undefined && event.offsetY !== undefined && !isNaN(event.offsetX) && event.offsetX >= 0) {
+    if (event.offsetX !== undefined && event.offsetY !== undefined && !isNaN(event.offsetX)) {
       localX = (event.offsetX / displayW) * maskCanvas.width;
       localY = (event.offsetY / displayH) * maskCanvas.height;
     } else {
@@ -2435,9 +2445,9 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     if (this.overlayBrushMode === 'erase') {
       ctxMask.globalCompositeOperation = 'destination-out';
       const grad = ctxMask.createRadialGradient(localX, localY, innerRadius, localX, localY, radius);
-      grad.addColorStop(0, 'rgba(0, 0, 0, ' + flow + ')');
+      grad.addColorStop(0, `rgba(0, 0, 0, ${flow})`);
       if (innerRadius > 0 && innerRadius < radius) {
-        grad.addColorStop(innerRadius / radius, 'rgba(0, 0, 0, ' + flow + ')');
+        grad.addColorStop(innerRadius / radius, `rgba(0, 0, 0, ${flow})`);
       }
       grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctxMask.fillStyle = grad;
@@ -2447,9 +2457,9 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     } else {
       ctxMask.globalCompositeOperation = 'source-over';
       const grad = ctxMask.createRadialGradient(localX, localY, innerRadius, localX, localY, radius);
-      grad.addColorStop(0, 'rgba(255, 255, 255, ' + flow + ')');
+      grad.addColorStop(0, `rgba(255, 255, 255, ${flow})`);
       if (innerRadius > 0 && innerRadius < radius) {
-        grad.addColorStop(innerRadius / radius, 'rgba(255, 255, 255, ' + flow + ')');
+        grad.addColorStop(innerRadius / radius, `rgba(255, 255, 255, ${flow})`);
       }
       grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
       ctxMask.fillStyle = grad;
@@ -2478,12 +2488,14 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  private commitOverlayMaskToLayer() {
+  public commitOverlayMaskToLayer() {
     if (!this.selectedLayer) return;
     const compCanvas = this.layerCompositeCanvases.get(this.selectedLayer.id);
     if (!compCanvas) return;
     const updatedUrl = compCanvas.toDataURL('image/png');
     this.selectedLayer.imageUrl = updatedUrl;
+    this.overlayImageUrl = updatedUrl;
+    this.layers = [...this.layers];
   }
 
   invertOverlayMask() {
@@ -2550,7 +2562,9 @@ export class AdjustPage implements OnInit, OnDestroy, AfterViewInit {
     const origUrl = this.originalLayerImageUrls.get(this.selectedLayer.id);
     if (origUrl) {
       this.selectedLayer.imageUrl = origUrl;
+      this.overlayImageUrl = origUrl;
       this.initOverlayMaskEngine(true);
+      this.commitOverlayMaskToLayer();
       this.showToast('Reset overlay layer to original');
     }
   }
